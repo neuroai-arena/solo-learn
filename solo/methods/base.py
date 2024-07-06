@@ -207,7 +207,8 @@ class BaseMethod(pl.LightningModule):
 
         # online linear classifier
         self.num_classes: int = cfg.data.num_classes
-        self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
+        if not self.cfg.no_validation:
+            self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
 
         # training related
         self.max_epochs: int = cfg.max_epochs
@@ -319,15 +320,16 @@ class BaseMethod(pl.LightningModule):
                 list of dicts containing learnable parameters and possible settings.
         """
 
-        return [
-            {"name": "backbone", "params": self.backbone.parameters()},
-            {
+        params = [{"name": "backbone", "params": self.backbone.parameters()}]
+        if not self.cfg.no_validation:
+            params.append({
                 "name": "classifier",
                 "params": self.classifier.parameters(),
                 "lr": self.classifier_lr,
                 "weight_decay": 0,
-            },
-        ]
+            })
+        return params
+
 
     def configure_optimizers(self) -> Tuple[List, List]:
         """Collects learnable parameters and configures the optimizer and learning rate scheduler.
@@ -430,8 +432,11 @@ class BaseMethod(pl.LightningModule):
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
         feats = self.backbone(X)
-        logits = self.classifier(feats.detach())
-        return {"logits": logits, "feats": feats}
+        out = {"feats": feats}
+        if not self.cfg.no_validation:
+            logits = self.classifier(feats.detach())
+            out.update({"logits": logits})
+        return out
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Basic multicrop forward method that performs the forward pass
@@ -464,14 +469,16 @@ class BaseMethod(pl.LightningModule):
         """
 
         out = self(X)
-        logits = out["logits"]
+        out["loss"] = 0
 
-        loss = F.cross_entropy(logits, targets, ignore_index=-1)
-        # handle when the number of classes is smaller than 5
-        top_k_max = min(5, logits.size(1))
-        acc1, acc5 = accuracy_at_k(logits, targets, top_k=(1, top_k_max))
+        if not self.cfg.no_validation:
+            logits = out["logits"]
+            loss = F.cross_entropy(logits, targets, ignore_index=-1)
+            # handle when the number of classes is smaller than 5
+            top_k_max = min(5, logits.size(1))
+            acc1, acc5 = accuracy_at_k(logits, targets, top_k=(1, top_k_max))
 
-        out.update({"loss": loss, "acc1": acc1, "acc5": acc5})
+            out.update({"loss": loss, "acc1": acc1, "acc5": acc5})
         return out
 
     def base_training_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
@@ -501,11 +508,9 @@ class BaseMethod(pl.LightningModule):
         Returns:
             Dict[str, Any]: dict with the classification loss, features and logits.
         """
-
         _, X, targets = batch
 
         X = [X] if isinstance(X, torch.Tensor) else X
-
         # check that we received the desired number of crops
         assert len(X) == self.num_crops
 
@@ -517,16 +522,18 @@ class BaseMethod(pl.LightningModule):
             for k in multicrop_outs[0].keys():
                 outs[k] = outs.get(k, []) + [out[k] for out in multicrop_outs]
 
+        metrics = {}
         # loss and stats
         outs["loss"] = sum(outs["loss"]) / self.num_large_crops
-        outs["acc1"] = sum(outs["acc1"]) / self.num_large_crops
-        outs["acc5"] = sum(outs["acc5"]) / self.num_large_crops
+        if not self.cfg.no_validation:
+            outs["acc1"] = sum(outs["acc1"]) / self.num_large_crops
+            outs["acc5"] = sum(outs["acc5"]) / self.num_large_crops
 
-        metrics = {
-            "train_class_loss": outs["loss"],
-            "train_acc1": outs["acc1"],
-            "train_acc5": outs["acc5"],
-        }
+            metrics.update({
+                "train_class_loss": outs["loss"],
+                "train_acc1": outs["acc1"],
+                "train_acc5": outs["acc5"],
+            })
 
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
 
@@ -585,11 +592,14 @@ class BaseMethod(pl.LightningModule):
             self.knn(test_features=out.pop("feats").detach(), test_targets=targets.detach())
 
         metrics = {
-            "batch_size": batch_size,
-            "val_loss": out["loss"],
-            "val_acc1": out["acc1"],
-            "val_acc5": out["acc5"],
+            "batch_size": batch_size
         }
+        if not self.cfg.no_validation:
+            metrics.update({
+                "val_loss": out["loss"],
+                "val_acc1": out["acc1"],
+                "val_acc5": out["acc5"],
+            })
         if update_validation_step_outputs:
             self.validation_step_outputs.append(metrics)
         return metrics
@@ -599,12 +609,12 @@ class BaseMethod(pl.LightningModule):
         This is needed because the last batch can be smaller than the others,
         slightly skewing the metrics.
         """
-
-        val_loss = weighted_mean(self.validation_step_outputs, "val_loss", "batch_size")
-        val_acc1 = weighted_mean(self.validation_step_outputs, "val_acc1", "batch_size")
-        val_acc5 = weighted_mean(self.validation_step_outputs, "val_acc5", "batch_size")
-
-        log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
+        log = {}
+        if not self.cfg.no_validation:
+            val_loss = weighted_mean(self.validation_step_outputs, "val_loss", "batch_size")
+            val_acc1 = weighted_mean(self.validation_step_outputs, "val_acc1", "batch_size")
+            val_acc5 = weighted_mean(self.validation_step_outputs, "val_acc5", "batch_size")
+            log.update({"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5})
 
         if self.knn_eval and not self.trainer.sanity_checking:
             val_knn_acc1, val_knn_acc5 = self.knn.compute()

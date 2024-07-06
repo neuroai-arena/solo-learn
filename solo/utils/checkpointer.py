@@ -74,6 +74,7 @@ class Checkpointer(Callback):
         cfg.checkpoint.dir = omegaconf_select(cfg, "checkpoint.dir", default="trained_models")
         cfg.checkpoint.frequency = omegaconf_select(cfg, "checkpoint.frequency", default=1)
         cfg.checkpoint.keep_prev = omegaconf_select(cfg, "checkpoint.keep_prev", default=False)
+        cfg.checkpoint.every_n_iter = omegaconf_select(cfg, "checkpoint.every_n_iter", default=0)
 
         return cfg
 
@@ -173,3 +174,37 @@ class Checkpointer(Callback):
         epoch = trainer.current_epoch  # type: ignore
         if epoch % self.frequency == 0:
             self.save(trainer)
+
+    def save_iter_wise(self, trainer: pl.Trainer, batch_idx):
+        """Saves current checkpoint.
+
+        Args:
+            trainer (pl.Trainer): pytorch lightning trainer object.
+        """
+
+        if not trainer.sanity_checking:
+            epoch = trainer.current_epoch  # type: ignore
+            ckpt = self.path / self.ckpt_placeholder.format(epoch+batch_idx)
+            trainer.save_checkpoint(ckpt)
+
+            if (
+                trainer.is_global_zero
+                and self.last_ckpt
+                and self.last_ckpt != ckpt
+                and not self.keep_prev
+            ):
+                os.remove(
+                    self.last_ckpt,
+                )
+            self.last_ckpt = ckpt
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
+        """Called when the train batch ends.
+
+        Note:
+            The value ``outputs["loss"]`` here will be the normalized value w.r.t ``accumulate_grad_batches`` of the
+            loss returned from ``training_step``.
+
+        """
+        if self.cfg.checkpoint.every_n_iter and batch_idx % self.cfg.checkpoint.every_n_iter == 0:
+            self.save_iter_wise(trainer, batch_idx)

@@ -28,14 +28,8 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from omegaconf import DictConfig, OmegaConf
 from solo.args.pretrain import parse_cfg
-from solo.data.classification_dataloader import prepare_data as prepare_data_classification
-from solo.data.pretrain_dataloader import (
-    FullTransformPipeline,
-    NCropAugmentation,
-    build_transform_pipeline,
-    prepare_dataloader,
-    prepare_datasets,
-)
+from solo.data.StatefulDistributeSampler import ResumeStepCallback, StatefulDistributedSampler, DataPrepIterCheck
+
 from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
@@ -54,7 +48,6 @@ except ImportError:
     _umap_available = False
 else:
     _umap_available = True
-
 
 @hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
@@ -78,81 +71,7 @@ def main(cfg: DictConfig):
         model = model.to(memory_format=torch.channels_last)
 
     # validation dataloader for when it is available
-    if cfg.data.dataset == "custom" and (cfg.data.no_labels or cfg.data.val_path is None):
-        val_loader = None
-    elif cfg.data.dataset in ["imagenet100", "imagenet"] and cfg.data.val_path is None:
-        val_loader = None
-    else:
-        if cfg.data.format == "dali":
-            val_data_format = "image_folder"
-        else:
-            val_data_format = cfg.data.format
 
-        _, val_loader = prepare_data_classification(
-            cfg.data.dataset,
-            train_data_path=cfg.data.train_path,
-            val_data_path=cfg.data.val_path,
-            data_format=val_data_format,
-            batch_size=cfg.optimizer.batch_size,
-            num_workers=cfg.data.num_workers,
-        )
-
-    # pretrain dataloader
-    if cfg.data.format == "dali":
-        assert (
-            _dali_avaliable
-        ), "Dali is not currently avaiable, please install it first with pip3 install .[dali]."
-        pipelines = []
-        for aug_cfg in cfg.augmentations:
-            pipelines.append(
-                NCropAugmentation(
-                    build_transform_pipeline_dali(
-                        cfg.data.dataset, aug_cfg, dali_device=cfg.dali.device
-                    ),
-                    aug_cfg.num_crops,
-                )
-            )
-        transform = FullTransformPipeline(pipelines)
-
-        dali_datamodule = PretrainDALIDataModule(
-            dataset=cfg.data.dataset,
-            train_data_path=cfg.data.train_path,
-            transforms=transform,
-            num_large_crops=cfg.data.num_large_crops,
-            num_small_crops=cfg.data.num_small_crops,
-            num_workers=cfg.data.num_workers,
-            batch_size=cfg.optimizer.batch_size,
-            no_labels=cfg.data.no_labels,
-            data_fraction=cfg.data.fraction,
-            dali_device=cfg.dali.device,
-            encode_indexes_into_labels=cfg.dali.encode_indexes_into_labels,
-        )
-        dali_datamodule.val_dataloader = lambda: val_loader
-    else:
-        pipelines = []
-        for aug_cfg in cfg.augmentations:
-            pipelines.append(
-                NCropAugmentation(
-                    build_transform_pipeline(cfg.data.dataset, aug_cfg), aug_cfg.num_crops
-                )
-            )
-        transform = FullTransformPipeline(pipelines)
-
-        if cfg.debug_augmentations:
-            print("Transforms:")
-            print(transform)
-
-        train_dataset = prepare_datasets(
-            cfg.data.dataset,
-            transform,
-            train_data_path=cfg.data.train_path,
-            data_format=cfg.data.format,
-            no_labels=cfg.data.no_labels,
-            data_fraction=cfg.data.fraction,
-        )
-        train_loader = prepare_dataloader(
-            train_dataset, batch_size=cfg.optimizer.batch_size, num_workers=cfg.data.num_workers
-        )
 
     # 1.7 will deprecate resume_from_checkpoint, but for the moment
     # the argument is the same, but we need to pass it as ckpt_path to trainer.fit
@@ -212,6 +131,9 @@ def main(cfg: DictConfig):
         lr_monitor = LearningRateMonitor(logging_interval="step")
         callbacks.append(lr_monitor)
 
+    if cfg.max_epochs == 1:
+        callbacks.append(ResumeStepCallback())
+
     trainer_kwargs = OmegaConf.to_container(cfg)
     # we only want to pass in valid Trainer args, the rest may be user specific
     valid_kwargs = inspect.signature(Trainer.__init__).parameters
@@ -228,10 +150,10 @@ def main(cfg: DictConfig):
     )
     trainer = Trainer(**trainer_kwargs)
 
-    if cfg.data.format == "dali":
-        trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
-    else:
-        trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_path)
+    # if cfg.data.format == "dali":
+    #     trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
+    # else:
+    trainer.fit(model, datamodule=DataPrepIterCheck(cfg), ckpt_path=ckpt_path)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,9 @@ from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
+from solo.data.custom.ego4d import Ego4d
+from solo.data.custom.imagenet import ImgnetDataset
+
 try:
     from solo.data.h5_dataset import H5Dataset
 except ImportError:
@@ -136,7 +139,7 @@ class NCropAugmentation:
         self.transform = transform
         self.num_crops = num_crops
 
-    def __call__(self, x: Image) -> List[torch.Tensor]:
+    def __call__(self, x: Image, x2: Image = None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
 
         Args:
@@ -145,7 +148,8 @@ class NCropAugmentation:
         Returns:
             List[torch.Tensor]: an image in the tensor format.
         """
-
+        if x2 is not None:
+            return [self.transform(random.choice([x, x2])) for _ in range(self.num_crops)]
         return [self.transform(x) for _ in range(self.num_crops)]
 
     def __repr__(self) -> str:
@@ -156,7 +160,7 @@ class FullTransformPipeline:
     def __init__(self, transforms: Callable) -> None:
         self.transforms = transforms
 
-    def __call__(self, x: Image) -> List[torch.Tensor]:
+    def __call__(self, x: Image, x2: Image = None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
 
         Args:
@@ -165,8 +169,15 @@ class FullTransformPipeline:
         Returns:
             List[torch.Tensor]: an image in the tensor format.
         """
-
         out = []
+        if x2 is not None:
+            out.extend(self.transforms[0](x))
+            out.extend(self.transforms[1](x2))
+            for t in self.transforms[2:]:
+                # out.extend(transform(random.choice([x, x2])))
+                out.extend(t(x, x2))
+            return out
+
         for transform in self.transforms:
             out.extend(transform(x))
         return out
@@ -209,6 +220,8 @@ def build_transform_pipeline(dataset, cfg):
         "stl10": ((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
         "imagenet100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "imagenet": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+        "imagenet2_100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+        "imagenet2": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
     }
 
     mean, std = MEANS_N_STD.get(
@@ -298,6 +311,7 @@ def prepare_datasets(
     no_labels: Optional[Union[str, Path]] = False,
     download: bool = True,
     data_fraction: float = -1.0,
+    **dataset_kwargs
 ) -> Dataset:
     """Prepares the desired dataset.
 
@@ -334,7 +348,10 @@ def prepare_datasets(
             download=download,
             transform=transform,
         )
-
+    elif dataset in ["ego4d"]:
+        train_dataset = dataset_with_index(Ego4d)(train_data_path, transform, **dataset_kwargs)
+    elif dataset in ["imagenet2", "imagenet2_100"]:
+        train_dataset = dataset_with_index(ImgnetDataset)(train_data_path, "train", transform, dataset=="imagenet2_100")
     elif dataset in ["imagenet", "imagenet100"]:
         if data_format == "h5":
             assert _h5_available
@@ -374,7 +391,7 @@ def prepare_datasets(
 
 
 def prepare_dataloader(
-    train_dataset: Dataset, batch_size: int = 64, num_workers: int = 4
+    train_dataset: Dataset, batch_size: int = 64, num_workers: int = 4, sampler = None, shuffle=True
 ) -> DataLoader:
     """Prepares the training dataloader for pretraining.
     Args:
@@ -388,9 +405,10 @@ def prepare_dataloader(
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=True,
         drop_last=True,
+        sampler=sampler
     )
     return train_loader

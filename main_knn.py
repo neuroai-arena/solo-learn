@@ -141,6 +141,7 @@ def main():
         train_data_path=args.train_data_path,
         val_data_path=args.val_data_path,
         data_format=args.data_format,
+        **cfg.data.dataset_kwargs
     )
     train_loader, val_loader = prepare_dataloaders(
         train_dataset,

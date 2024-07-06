@@ -29,6 +29,9 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
+from solo.data.custom.ego4d import Ego4d
+from solo.data.custom.imagenet import ImgnetDataset
+
 try:
     from solo.data.h5_dataset import H5Dataset
 except ImportError:
@@ -136,6 +139,9 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "stl10": stl_pipeline,
         "imagenet100": imagenet_pipeline,
         "imagenet": imagenet_pipeline,
+        "imagenet2_100": imagenet_pipeline,
+        "imagenet2": imagenet_pipeline,
+        "ego4d": imagenet_pipeline,
         "custom": custom_pipeline,
     }
 
@@ -157,6 +163,7 @@ def prepare_datasets(
     data_format: Optional[str] = "image_folder",
     download: bool = True,
     data_fraction: float = -1.0,
+    **dataset_kwargs
 ) -> Tuple[Dataset, Dataset]:
     """Prepares train and val datasets.
 
@@ -185,7 +192,7 @@ def prepare_datasets(
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom"]
+    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom","imagenet2", "imagenet2_100","ego4d"]
 
     if dataset in ["cifar10", "cifar100"]:
         DatasetClass = vars(torchvision.datasets)[dataset.upper()]
@@ -216,6 +223,12 @@ def prepare_datasets(
             download=download,
             transform=T_val,
         )
+    elif dataset in ["ego4d"]:
+        train_dataset = ImgnetDataset(val_data_path, "val", T_val, True)#ImgnetDataset(train_data_path, "train", T_train, True)
+        val_dataset = ImgnetDataset(val_data_path, "val", T_val, True)
+    elif dataset in ["imagenet2", "imagenet2_100"]:
+        train_dataset = ImgnetDataset(train_data_path, "train", T_train, dataset == "imagenet2_100")
+        val_dataset = ImgnetDataset(val_data_path, "val", T_val, dataset == "imagenet2_100")
 
     elif dataset in ["imagenet", "imagenet100", "custom"]:
         if data_format == "h5":
@@ -284,6 +297,7 @@ def prepare_data(
     download: bool = True,
     data_fraction: float = -1.0,
     auto_augment: bool = False,
+    **dataset_kwargs
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
 
@@ -330,6 +344,7 @@ def prepare_data(
         data_format=data_format,
         download=download,
         data_fraction=data_fraction,
+        **dataset_kwargs
     )
     train_loader, val_loader = prepare_dataloaders(
         train_dataset,

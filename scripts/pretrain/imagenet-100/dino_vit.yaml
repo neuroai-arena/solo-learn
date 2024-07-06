@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - augmentations: asymmetric.yaml
-  - wandb: private.yaml
+  - wandb: private_dino.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -21,7 +21,7 @@ method_kwargs:
   num_prototypes: 65536
   norm_last_layer: False
 momentum:
-  base_tau: 0.9995
+  base_tau: 0.996
   final_tau: 1.0
 data:
   dataset: imagenet100
@@ -34,7 +34,7 @@ optimizer:
   batch_size: 128
   lr: 0.005
   classifier_lr: 3e-3
-  weight_decay: 1e-4
+  weight_decay: 0.05
 scheduler:
   name: "warmup_cosine"
   warmup_start_lr: 0.00001
@@ -47,8 +47,8 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 400
-devices: [0, 1]
+devices: 8
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
