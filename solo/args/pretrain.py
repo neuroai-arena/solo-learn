@@ -180,6 +180,6 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     elif cfg.optimizer.name == "adamw":
         cfg.optimizer.kwargs.betas = omegaconf_select(cfg, "optimizer.kwargs.betas", [0.9, 0.999])
 
-
+    cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
 
     return cfg

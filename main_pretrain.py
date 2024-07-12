@@ -28,7 +28,7 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from omegaconf import DictConfig, OmegaConf
 from solo.args.pretrain import parse_cfg
-from solo.data.StatefulDistributeSampler import ResumeStepCallback, StatefulDistributedSampler, DataPrepIterCheck
+from solo.data.StatefulDistributeSampler import DataPrepIterCheck
 
 from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
@@ -131,8 +131,8 @@ def main(cfg: DictConfig):
         lr_monitor = LearningRateMonitor(logging_interval="step")
         callbacks.append(lr_monitor)
 
-    if cfg.max_epochs == 1:
-        callbacks.append(ResumeStepCallback())
+    # if cfg.max_epochs == 1:
+    #     callbacks.append(ResumeStepCallback())
 
     trainer_kwargs = OmegaConf.to_container(cfg)
     # we only want to pass in valid Trainer args, the rest may be user specific

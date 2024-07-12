@@ -13,17 +13,17 @@ hydra:
 name: "mocov3-imagenet100-linear"
 pretrained_feature_extractor: None
 backbone:
-  name: "resnet18"
+  name: "resnet50"
 pretrain_method: "mocov3"
 data:
-  dataset: imagenet100
-  train_path: "./datasets/imagenet-100/train"
-  val_path: "./datasets/imagenet-100/val"
-  format: "dali"
+  dataset: imagenet2_100
+  train_path: "/scratch/autolearn/aubret/imgnet/data/"
+  val_path: "/scratch/autolearn/aubret/imgnet/data/"
+  format: "h5"
   num_workers: 4
 optimizer:
-  name: "sgd"
-  batch_size: 256
+  name: "lars"
+  batch_size: 64
   lr: 0.3
   weight_decay: 0
 scheduler:
@@ -38,8 +38,8 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [0]
+devices: 8
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16
+precision: 32

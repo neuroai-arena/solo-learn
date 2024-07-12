@@ -25,7 +25,7 @@ import torchvision
 from timm.data import create_transform
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
@@ -256,7 +256,7 @@ def prepare_datasets(
 
 
 def prepare_dataloaders(
-    train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4
+    train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4, samplers=(None, None)
 ) -> Tuple[DataLoader, DataLoader]:
     """Wraps a train and a validation dataset with a DataLoader.
 
@@ -276,6 +276,7 @@ def prepare_dataloaders(
         num_workers=num_workers,
         pin_memory=True,
         drop_last=True,
+        sampler=samplers[0]
     )
     val_loader = DataLoader(
         val_dataset,
@@ -283,6 +284,7 @@ def prepare_dataloaders(
         num_workers=num_workers,
         pin_memory=True,
         drop_last=False,
+        sampler=samplers[1]
     )
     return train_loader, val_loader
 
@@ -346,10 +348,14 @@ def prepare_data(
         data_fraction=data_fraction,
         **dataset_kwargs
     )
+    # samplers = (None, None)
+    # if sampler == "distributed":
+    #     samplers = (DistributedSampler(train_dataset), DistributedSampler(val_dataset))
     train_loader, val_loader = prepare_dataloaders(
         train_dataset,
         val_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
+        # samplers=samplers
     )
     return train_loader, val_loader

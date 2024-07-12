@@ -51,7 +51,7 @@ class Ego4d(Dataset):
         binary_img = self.hdf5_file.get(partition).get(f"images{gaze_size}_{str(number)}")[index]
         pil_img = Image.open(io.BytesIO(binary_img))
         if self.center_crop:
-            pil_img = torchvision.transforms.functional.center_crop(pil_img, (224, 244))
+            pil_img = torchvision.transforms.functional.center_crop(pil_img, (224, 224))
         return pil_img
 
     def __getitem__(self, idx):

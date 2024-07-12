@@ -1,5 +1,9 @@
+from typing import Union, IO, Optional, Any, Dict
+from typing_extensions import Self
+
 import numpy as np
 import torch
+from lightning.fabric.utilities.types import _PATH, _MAP_LOCATION_TYPE
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 import lightning.pytorch as pl
@@ -18,6 +22,7 @@ class DataPrepIterCheck(pl.LightningDataModule):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
+        self.global_step = 0
     
     def setup(self, stage: str) -> None:
         pipelines = []
@@ -44,6 +49,8 @@ class DataPrepIterCheck(pl.LightningDataModule):
         )
 
 
+
+
     def val_dataloader(self):
         if self.cfg.data.dataset == "custom" and (self.cfg.data.no_labels or self.cfg.data.val_path is None):
             val_loader = None
@@ -58,6 +65,7 @@ class DataPrepIterCheck(pl.LightningDataModule):
                 data_format=val_data_format,
                 batch_size=self.cfg.optimizer.batch_size,
                 num_workers=self.cfg.data.num_workers,
+                samplers="distributed"
             )
 
         return val_loader
@@ -74,6 +82,27 @@ class DataPrepIterCheck(pl.LightningDataModule):
                 self.train_dataset, batch_size=self.cfg.optimizer.batch_size, num_workers=self.cfg.data.num_workers
             )
         return train_loader
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {"steps": self.trainer.global_step}
+
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+        self.train_dataloader().sampler.set_start_iter(state_dict["steps"])
+
+
+
+
+    # def load_from_checkpoint(
+    #     cls,
+    #     checkpoint_path: Union[_PATH, IO],
+    #     map_location: _MAP_LOCATION_TYPE = None,
+    #     hparams_file: Optional[_PATH] = None,
+    #     **kwargs: Any,
+    # ) -> Self:
+    #     return super().load_from_checkpoint(cls, checkpoint_path, map_location, hparams_file, **kwargs)
+
+
+
 
 
 # Taken there: https://github.com/facebookresearch/vissl/blob/main/vissl/data/data_helper.py#L93
@@ -134,12 +163,4 @@ class StatefulDistributedSampler(DistributedSampler):
         sampler should start sampling.
         """
         self.start_iter = start_iter
-
-
-class ResumeStepCallback(pl.Callback):
-    def __init__(self):
-        super().__init__()
-
-    def on_load_checkpoint(self, trainer, pl_module, checkpoint):
-        trainer.train_dataloader.sampler.set_start_iter(trainer.global_step)
 

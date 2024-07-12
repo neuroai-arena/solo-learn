@@ -1,7 +1,7 @@
 import os
 
 import omegaconf
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, ListConfig
 from solo.methods.base import BaseMethod
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
@@ -21,6 +21,8 @@ _N_CLASSES_PER_DATASET = {
     "stl10": 10,
     "imagenet": 1000,
     "imagenet100": 100,
+    "imagenet2": 1000,
+    "imagenet2_100": 100,
 }
 
 
@@ -30,6 +32,8 @@ _SUPPORTED_DATASETS = [
     "stl10",
     "imagenet",
     "imagenet100",
+    "imagenet2",
+    "imagenet2_100",
     "custom",
 ]
 
@@ -165,7 +169,8 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     # adjust lr according to batch size
     cfg.num_nodes = omegaconf_select(cfg, "num_nodes", 1)
-    scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 256
+    tl = len(cfg.devices) if isinstance(cfg.devices, ListConfig) else cfg.devices
+    scale_factor = cfg.optimizer.batch_size * tl * cfg.num_nodes / 256
     cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
 
     # extra optimizer kwargs
@@ -184,4 +189,5 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     elif cfg.optimizer.name == "adamw":
         cfg.optimizer.kwargs.betas = omegaconf_select(cfg, "optimizer.kwargs.betas", [0.9, 0.999])
 
+    cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
     return cfg
