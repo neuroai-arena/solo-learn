@@ -264,6 +264,23 @@ class DINO(BaseMomentumMethod):
         """Updates the current epoch in DINO's loss object."""
         self.dino_loss_func.epoch = self.current_epoch
 
+
+    def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
+        """Performs the forward pass for the multicrop views.
+
+        Args:
+            X (torch.Tensor): batch of images in tensor format.
+
+        Returns:
+            Dict[]: a dict containing the outputs of the parent
+                and the projected features.
+        """
+        out = super().multicrop_forward(X)
+        z = self.head(out["feats"])
+        out.update({"z": z})
+        return out
+
+
     def forward(self, X: torch.Tensor) -> Dict[str, Any]:
         """Performs forward pass of the student (backbone and head).
 

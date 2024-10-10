@@ -29,6 +29,12 @@ data:
   val_path: None
   format: "h5"
   num_workers: 8
+  dataset_kwargs:
+    gaze_size: 224
+    time_window: 30
+    center_crop: False #To compare gaze crop with a center crop with gaze size 540
+    ego4d_subset: 1 #Ratio between 0 and 1
+    v2: False
 optimizer:
   name: "adamw"
   batch_size: 64
@@ -36,11 +42,6 @@ optimizer:
   classifier_lr: 3e-3
   weight_decay: 1e-6
   no_labels: True
-  dataset_kwargs:
-    gaze_size: 224
-    time_window: 30
-    center_crop: False #To compare gaze crop with a center crop with gaze size 540
-    ego4d_subset: 1 #Ratio between 0 and 1
 scheduler:
   name: "none"
 checkpoint:

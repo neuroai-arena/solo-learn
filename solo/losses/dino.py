@@ -78,8 +78,15 @@ class DINOLoss(nn.Module):
             torch.Tensor: DINO loss.
         """
 
+        # student_out = student_output / self.student_temp
+        # student_out = student_out.chunk(self.num_large_crops)
+
+        split_size = self.num_large_crops #if num_large_crops is None else num_large_crops
+        teacher_out = teacher_out.detach().chunk(split_size) #if split_size > 1 else [teacher_out.detach()]
+
         student_out = student_output / self.student_temp
-        student_out = student_out.chunk(self.num_large_crops)
+        student_out = student_out.chunk(student_out.shape[0]//teacher_out[0].shape[0])
+
 
         # teacher centering and sharpening
         temp = self.teacher_temp_schedule[self.epoch]

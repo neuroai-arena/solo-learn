@@ -222,6 +222,7 @@ def build_transform_pipeline(dataset, cfg):
         "imagenet": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "imagenet2_100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "imagenet2": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+        "ego4d": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
     }
 
     mean, std = MEANS_N_STD.get(
