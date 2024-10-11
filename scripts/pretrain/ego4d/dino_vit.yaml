@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: asymmetric.yaml
+  - augmentations: multicrop.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -15,11 +15,13 @@ name: "dino-vit-ego4d"
 method: "dino"
 backbone:
   name: "vit_base"
+  kwargs:
+    dynamic_img_size: True
 method_kwargs:
   proj_hidden_dim: 2048
   proj_output_dim: 256
   num_prototypes: 65536
-  norm_last_layer: False
+  norm_last_layer: True
   warmup_teacher_temperature_epochs: 0
 momentum:
   base_tau: 0.996

@@ -80,6 +80,8 @@ class DINOLoss(nn.Module):
 
         # student_out = student_output / self.student_temp
         # student_out = student_out.chunk(self.num_large_crops)
+        temp = self.teacher_temp_schedule[self.epoch]
+        teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
 
         split_size = self.num_large_crops #if num_large_crops is None else num_large_crops
         teacher_out = teacher_out.detach().chunk(split_size) #if split_size > 1 else [teacher_out.detach()]
@@ -89,9 +91,7 @@ class DINOLoss(nn.Module):
 
 
         # teacher centering and sharpening
-        temp = self.teacher_temp_schedule[self.epoch]
-        teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
-        teacher_out = teacher_out.detach().chunk(2)
+
 
         total_loss = 0
         n_loss_terms = 0
