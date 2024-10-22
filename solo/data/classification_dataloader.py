@@ -31,6 +31,7 @@ from torchvision.datasets import STL10, ImageFolder
 
 from solo.data.custom.ego4d import Ego4d
 from solo.data.custom.imagenet import ImgnetDataset
+from solo.data.custom.tinyimgnet import TinyDataset
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -118,7 +119,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
                 transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
             ]
         ),
         "T_val": transforms.Compose(
@@ -126,9 +127,31 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
                 transforms.Resize(256),  # resize shorter
                 transforms.CenterCrop(224),  # take center crop
                 transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        )
+    }
+
+    tiny_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                # transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomResizedCrop(size=64, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
             ]
         ),
+        "T_val": transforms.Compose(
+            [
+                # transforms.Resize(256),  # resize shorter
+                transforms.Resize(74),  # resize shorter
+                # transforms.CenterCrop(224),  # take center crop
+                transforms.CenterCrop(64),  # take center crop
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+            ]
+        )
     }
 
     custom_pipeline = build_custom_pipeline()
@@ -142,7 +165,8 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "imagenet2_100": imagenet_pipeline,
         "imagenet2": imagenet_pipeline,
         "ego4d": imagenet_pipeline,
-        "custom": custom_pipeline,
+        "tiny": tiny_pipeline,
+        "custom": custom_pipeline
     }
 
     assert dataset in pipelines
@@ -192,7 +216,7 @@ def prepare_datasets(
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom","imagenet2", "imagenet2_100","ego4d"]
+    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom","imagenet2", "imagenet2_100","ego4d","tiny"]
 
     if dataset in ["cifar10", "cifar100"]:
         DatasetClass = vars(torchvision.datasets)[dataset.upper()]
@@ -209,7 +233,9 @@ def prepare_datasets(
             download=download,
             transform=T_val,
         )
-
+    elif dataset in ["tiny"]:
+        train_dataset = TinyDataset(train_data_path, "train", T_train)
+        val_dataset = TinyDataset(val_data_path, "val", T_val)
     elif dataset == "stl10":
         train_dataset = STL10(
             train_data_path,

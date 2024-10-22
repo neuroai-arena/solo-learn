@@ -23,6 +23,7 @@ _N_CLASSES_PER_DATASET = {
     "imagenet100": 100,
     "imagenet2": 1000,
     "imagenet2_100": 100,
+    "tiny": 200
 }
 
 

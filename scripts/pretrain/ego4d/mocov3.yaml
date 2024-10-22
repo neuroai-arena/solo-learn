@@ -25,16 +25,14 @@ momentum:
   final_tau: 0.996
 data:
   dataset: ego4d
-  train_path: "/scratch/autolearn/aubret/ego4d/hdf5/"
+  train_path: "/scratch/autolearn/aubret/ego4dv2/"
   val_path: None
   format: "h5"
   num_workers: 8
   dataset_kwargs:
     gaze_size: 224
-    time_window: 30
+    time_window: 15
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
-    ego4d_subset: 1 #Ratio between 0 and 1
-    v2: False
 optimizer:
   name: "adamw"
   batch_size: 64

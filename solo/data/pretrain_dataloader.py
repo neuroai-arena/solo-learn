@@ -33,6 +33,7 @@ from torchvision.datasets import STL10, ImageFolder
 
 from solo.data.custom.ego4d import Ego4d
 from solo.data.custom.imagenet import ImgnetDataset
+from solo.data.custom.tinyimgnet import TinyDataset
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -351,6 +352,8 @@ def prepare_datasets(
         )
     elif dataset in ["ego4d"]:
         train_dataset = dataset_with_index(Ego4d)(train_data_path, transform, **dataset_kwargs)
+    elif dataset == "tiny":
+        train_dataset = dataset_with_index(TinyDataset)(train_data_path,split="train", transform=transform)
     elif dataset in ["imagenet2", "imagenet2_100"]:
         train_dataset = dataset_with_index(ImgnetDataset)(train_data_path, "train", transform, dataset=="imagenet2_100")
     elif dataset in ["imagenet", "imagenet100"]:

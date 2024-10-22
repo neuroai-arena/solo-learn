@@ -25,9 +25,10 @@ _N_CLASSES_PER_DATASET = {
     "cifar100": 100,
     "stl10": 10,
     "imagenet": 1000,
-    "imagenet_2": 1000,
+    "imagenet2": 1000,
     "imagenet100": 100,
     "imagenet2_100": 100,
+    "tiny": 200,
     "ego4d": 0,
 }
 
@@ -38,8 +39,9 @@ _SUPPORTED_DATASETS = [
     "imagenet",
     "imagenet100",
     "custom",
-    "imagenet_2",
+    "imagenet2",
     "imagenet2_100",
+    "tiny",
     "ego4d"
 ]
 

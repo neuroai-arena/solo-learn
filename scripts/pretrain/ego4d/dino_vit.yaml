@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: multicrop.yaml
+  - augmentations: multicrop_small2.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -29,17 +29,15 @@ momentum:
   classifier: False
 data:
   dataset: ego4d
-  train_path: "/scratch/autolearn/aubret/ego4d/hdf5/"
+  train_path: "/scratch/autolearn/aubret/ego4dv2//"
   val_path: None
   format: "h5"
   num_workers: 8
   no_labels: True
   dataset_kwargs:
     gaze_size: 224
-    time_window: 30
+    time_window: 15
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
-    ego4d_subset: 1 #Ratio between 0 and 1
-    v2: True
 optimizer:
   name: "adamw"
   batch_size: 64
