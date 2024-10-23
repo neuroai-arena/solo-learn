@@ -1,3 +1,4 @@
+import copy
 import io
 import os
 import random
@@ -11,7 +12,7 @@ from torch.utils.data import Dataset
 
 class Ego4d(Dataset):
 
-    corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9)]
+    corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9), (40,8)]
     def __init__(self, data_root, transform,gaze_size=224, time_window=30, center_crop=False, **kwargs):
         super().__init__(**kwargs)
         assert gaze_size in  [114, 160, 224, 313, 440, 540]
@@ -52,17 +53,26 @@ class Ego4d(Dataset):
 
     def open_image(self, row):
         index, number, partition = int(row[6]), int(row[11]), str(int(row[5]))
+        # print(partition, number, index, flush=True)
 
         gaze_size = self.gaze_size
         if gaze_size == -1:
             gaze_size = random.choice([114, 160, 224, 313, 439, 540])
 
         try:
-            binimg = self.hdf5_file.get(partition).get("frames")[f"images540_{str(number)}"][index]
+            binimg = self.hdf5_file.get(partition).get("frames").get(f"images540_{str(number)}")[index]
         except:
             print(partition,number, index, flush=True)
             raise Exception("Error", partition,number, index)
-        img = Image.open(io.BytesIO(binimg))
+
+
+        try:
+            img = Image.open(io.BytesIO(binimg))
+        except:
+            print(partition,number, index, binimg is None, flush=True)
+            raise Exception("Error", partition,number, index, binimg is None)
+
+
 
         if self.center_crop:
             img = torchvision.transforms.functional.center_crop(img, (224, 224))

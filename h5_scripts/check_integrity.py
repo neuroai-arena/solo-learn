@@ -1,9 +1,10 @@
 import argparse
+import io
 import os
 
 import h5py
 import numpy as np
-
+from PIL import Image
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--data_root", type=str, default="/scratch/autolearn/aubret/ego4dv2")
@@ -22,6 +23,10 @@ for i in range(len(values)):
     chunk = str(int(values[i,1]))
     try:
         d = hdf5_file[partition]["frames"][f"images540_{chunk}"]
+
+        size = len(hdf5_file[partition]["frames"])
+        d2 = d[size-1]
+        img = Image.open(io.BytesIO(d2))
     except:
         print("Error:", partition, chunk, flush=True)
 
