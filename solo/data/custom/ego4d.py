@@ -52,6 +52,7 @@ class Ego4d(Dataset):
 
     def open_image(self, row):
         index, number, partition = int(row[6]), int(row[11]), str(int(row[5]))
+
         gaze_size = self.gaze_size
         if gaze_size == -1:
             gaze_size = random.choice([114, 160, 224, 313, 439, 540])
@@ -106,5 +107,6 @@ class Ego4d(Dataset):
             new_video_name = rn[0]
             try_cpt += 1
 
-        image_pair = self.open_image(rn)
+
+        image_pair = self.open_image(rn) if new_idx != idx else image
         return self.transform(image, image_pair), -1
