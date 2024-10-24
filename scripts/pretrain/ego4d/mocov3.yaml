@@ -50,7 +50,6 @@ checkpoint:
   every_n_iter: 5000
 auto_resume:
   enabled: True
-
 # overwrite PL stuff
 max_epochs: 1
 devices: 8

@@ -81,7 +81,9 @@ class LinearWarmupCosineAnnealingLR(_LRScheduler):
                 "please use `get_last_lr()`.",
                 UserWarning,
             )
-
+        print("----")
+        print(self.warmup_epochs, self.last_epoch, self.base_lrs, self.warmup_start_lr)
+        print(( self.base_lrs[0] - self.warmup_start_lr) / (self.warmup_epochs - 1))
         if self.last_epoch == 0:
             return [self.warmup_start_lr] * len(self.base_lrs)
         if self.last_epoch < self.warmup_epochs:
@@ -147,3 +149,4 @@ class LinearWarmupCosineAnnealingLR(_LRScheduler):
             )
             for base_lr in self.base_lrs
         ]
+

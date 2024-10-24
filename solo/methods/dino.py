@@ -331,7 +331,6 @@ class DINO(BaseMomentumMethod):
 
         # ------- contrastive loss -------
         dino_loss = self.dino_loss_func(p, momentum_p)
-
         self.log("dino_loss", dino_loss, on_epoch=True, sync_dist=True)
 
         return dino_loss + class_loss

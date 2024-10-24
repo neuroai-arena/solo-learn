@@ -44,6 +44,7 @@ optimizer:
   lr: 0.0005
   classifier_lr: 3e-3
   weight_decay: 0.04
+  no_labels: True
 scheduler:
   name: "none"
   warmup_start_lr: 0
