@@ -87,6 +87,8 @@ def add_and_assert_wandb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     cfg.wandb.entity = omegaconf_select(cfg, "wandb.entity", None)
     cfg.wandb.project = omegaconf_select(cfg, "wandb.project", "solo-learn")
     cfg.wandb.offline = omegaconf_select(cfg, "wandb.offline", False)
+    cfg.wandb.group = omegaconf_select(cfg, "wandb.group", None)
+    cfg.wandb.job_type = omegaconf_select(cfg, "wandb.job_type", None)
 
     return cfg
 
@@ -161,6 +163,7 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     cfg.num_nodes = omegaconf_select(cfg, "num_nodes", 1)
     tl = len(cfg.devices) if isinstance(cfg.devices, ListConfig) else cfg.devices
     scale_factor = cfg.optimizer.batch_size * tl * cfg.num_nodes / 256
+    print(f"Scaling learning rate by {scale_factor}")
     cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
     if cfg.data.val_path is not None:
         assert not OmegaConf.is_missing(cfg, "optimizer.classifier_lr")
