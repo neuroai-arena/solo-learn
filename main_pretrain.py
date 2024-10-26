@@ -23,7 +23,7 @@ import os
 import hydra
 import torch
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from omegaconf import DictConfig, OmegaConf
@@ -121,6 +121,8 @@ def main(cfg: DictConfig):
             project=cfg.wandb.project,
             entity=cfg.wandb.entity,
             offline=cfg.wandb.offline,
+            group=cfg.wandb.group,
+            job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
         )
@@ -130,6 +132,8 @@ def main(cfg: DictConfig):
         # lr logging
         lr_monitor = LearningRateMonitor(logging_interval="step")
         callbacks.append(lr_monitor)
+
+        callbacks.append(ModelSummary(max_depth=1))
 
     # if cfg.max_epochs == 1:
     #     callbacks.append(ResumeStepCallback())
@@ -153,6 +157,7 @@ def main(cfg: DictConfig):
     # if cfg.data.format == "dali":
     #     trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
     # else:
+
     trainer.fit(model, datamodule=DataPrepIterCheck(cfg), ckpt_path=ckpt_path)
 
 
