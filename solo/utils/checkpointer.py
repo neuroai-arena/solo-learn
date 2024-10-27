@@ -39,6 +39,7 @@ class Checkpointer(Callback):
         logdir: Union[str, Path] = Path("trained_models"),
         frequency: int = 1,
         keep_prev: bool = False,
+        save_last: bool = False,
     ):
         """Custom checkpointer callback that stores checkpoints in an easier to access way.
 
@@ -49,6 +50,7 @@ class Checkpointer(Callback):
             frequency (int, optional): number of epochs between each checkpoint. Defaults to 1.
             keep_prev (bool, optional): whether to keep previous checkpoints or not.
                 Defaults to False.
+            save_last (bool, optional): whether to save the last checkpoint or not.
         """
 
         super().__init__()
@@ -57,6 +59,7 @@ class Checkpointer(Callback):
         self.logdir = Path(logdir)
         self.frequency = frequency
         self.keep_prev = keep_prev
+        self.save_last = save_last
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: DictConfig) -> DictConfig:
@@ -75,6 +78,7 @@ class Checkpointer(Callback):
         cfg.checkpoint.frequency = omegaconf_select(cfg, "checkpoint.frequency", default=1)
         cfg.checkpoint.keep_prev = omegaconf_select(cfg, "checkpoint.keep_prev", default=False)
         cfg.checkpoint.every_n_iter = omegaconf_select(cfg, "checkpoint.every_n_iter", default=0)
+        cfg.checkpoint.save_last = omegaconf_select(cfg, "checkpoint.save_last", default=True)
 
         return cfg
 
@@ -208,3 +212,15 @@ class Checkpointer(Callback):
         """
         if self.cfg.checkpoint.every_n_iter and batch_idx % self.cfg.checkpoint.every_n_iter == 0:
             self.save_iter_wise(trainer, batch_idx)
+
+    def on_train_end(self, trainer: pl.Trainer, _):
+        """Saves the last checkpoint if needed.
+
+        Args:
+            trainer (pl.Trainer): pytorch lightning trainer object.
+        """
+        if self.save_last:
+            print("Saving last checkpoint")
+            if not trainer.sanity_checking:
+                ckpt = self.path / self.ckpt_placeholder.format('last')
+                trainer.save_checkpoint(ckpt)
