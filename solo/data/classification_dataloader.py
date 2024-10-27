@@ -95,6 +95,24 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
     }
 
+    cifar_scale_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
     stl_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -159,6 +177,8 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     pipelines = {
         "cifar10": cifar_pipeline,
         "cifar100": cifar_pipeline,
+        "cifar10_224": cifar_scale_pipeline,
+        "cifar100_224": cifar_scale_pipeline,
         "stl10": stl_pipeline,
         "imagenet100": imagenet_pipeline,
         "imagenet": imagenet_pipeline,
@@ -179,15 +199,15 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
 
 
 def prepare_datasets(
-    dataset: str,
-    T_train: Callable,
-    T_val: Callable,
-    train_data_path: Optional[Union[str, Path]] = None,
-    val_data_path: Optional[Union[str, Path]] = None,
-    data_format: Optional[str] = "image_folder",
-    download: bool = True,
-    data_fraction: float = -1.0,
-    **dataset_kwargs
+        dataset: str,
+        T_train: Callable,
+        T_val: Callable,
+        train_data_path: Optional[Union[str, Path]] = None,
+        val_data_path: Optional[Union[str, Path]] = None,
+        data_format: Optional[str] = "image_folder",
+        download: bool = True,
+        data_fraction: float = -1.0,
+        **dataset_kwargs
 ) -> Tuple[Dataset, Dataset]:
     """Prepares train and val datasets.
 
@@ -216,9 +236,12 @@ def prepare_datasets(
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom","imagenet2", "imagenet2_100","ego4d","tiny"]
+    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2",
+                       "imagenet2_100", "ego4d", "tiny", "cifar10_224", "cifar100_224"]
 
-    if dataset in ["cifar10", "cifar100"]:
+    if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
+        if dataset == "cifar10_224": dataset = "cifar10"
+        if dataset == "cifar100_224": dataset = "cifar100"
         DatasetClass = vars(torchvision.datasets)[dataset.upper()]
         train_dataset = DatasetClass(
             train_data_path,
@@ -250,7 +273,8 @@ def prepare_datasets(
             transform=T_val,
         )
     elif dataset in ["ego4d"]:
-        train_dataset = ImgnetDataset(val_data_path, "val", T_val, True)#ImgnetDataset(train_data_path, "train", T_train, True)
+        train_dataset = ImgnetDataset(val_data_path, "val", T_val,
+                                      True)  # ImgnetDataset(train_data_path, "train", T_train, True)
         val_dataset = ImgnetDataset(val_data_path, "val", T_val, True)
     elif dataset in ["imagenet2", "imagenet2_100"]:
         train_dataset = ImgnetDataset(train_data_path, "train", T_train, dataset == "imagenet2_100")
@@ -282,7 +306,7 @@ def prepare_datasets(
 
 
 def prepare_dataloaders(
-    train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4, samplers=(None, None)
+        train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4, samplers=(None, None)
 ) -> Tuple[DataLoader, DataLoader]:
     """Wraps a train and a validation dataset with a DataLoader.
 
@@ -316,16 +340,16 @@ def prepare_dataloaders(
 
 
 def prepare_data(
-    dataset: str,
-    train_data_path: Optional[Union[str, Path]] = None,
-    val_data_path: Optional[Union[str, Path]] = None,
-    data_format: Optional[str] = "image_folder",
-    batch_size: int = 64,
-    num_workers: int = 4,
-    download: bool = True,
-    data_fraction: float = -1.0,
-    auto_augment: bool = False,
-    **dataset_kwargs
+        dataset: str,
+        train_data_path: Optional[Union[str, Path]] = None,
+        val_data_path: Optional[Union[str, Path]] = None,
+        data_format: Optional[str] = "image_folder",
+        batch_size: int = 64,
+        num_workers: int = 4,
+        download: bool = True,
+        data_fraction: float = -1.0,
+        auto_augment: bool = False,
+        **dataset_kwargs
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
 

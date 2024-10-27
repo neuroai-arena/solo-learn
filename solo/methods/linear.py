@@ -1,5 +1,5 @@
 # Copyright 2023 solo-learn development team.
-
+import gc
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
 # this software and associated documentation files (the "Software"), to deal in
 # the Software without restriction, including without limitation the rights to use,
@@ -26,6 +26,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 from solo.utils.lars import LARS
 from solo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -35,6 +37,41 @@ from solo.utils.misc import (
     param_groups_layer_decay,
     remove_bias_and_norm_from_weight_decay,
 )
+
+
+class FeatureDataset(Dataset):
+    def __init__(self, features: torch.Tensor, labels: torch.Tensor):
+        self.features = features
+        self.labels = labels
+        assert len(self.features) == len(self.labels), "Features and labels must have the same length."
+
+    def __len__(self) -> int:
+        return len(self.features)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.features[idx], self.labels[idx]
+
+
+@torch.inference_mode()
+def extract_features(loader: DataLoader, module: pl.LightningModule) -> Tuple[torch.Tensor, torch.Tensor]:
+    module.eval()
+    features, labels = [], []
+    bar = tqdm(loader, desc="Extracting features") if module.trainer.is_global_zero else loader
+    for i, (image, target) in enumerate(bar):
+        image = image.cuda(non_blocking=True, memory_format=torch.channels_last)
+        outs = module.backbone(image)
+
+        features.append(outs)
+        labels.append(target)
+    features = torch.cat(features)
+    labels = torch.cat(labels)
+
+    features = module.all_gather(features).view(-1, features.shape[-1])
+    labels = module.all_gather(labels).view(-1)
+    # print("RANK", module.trainer.local_rank, ":", features.shape, labels.shape)
+
+    module.train()
+    return features, labels
 
 
 class LinearModel(pl.LightningModule):
@@ -53,11 +90,11 @@ class LinearModel(pl.LightningModule):
     ]
 
     def __init__(
-        self,
-        backbone: nn.Module,
-        cfg: omegaconf.DictConfig,
-        loss_func: Callable = None,
-        mixup_func: Callable = None,
+            self,
+            backbone: nn.Module,
+            cfg: omegaconf.DictConfig,
+            loss_func: Callable = None,
+            mixup_func: Callable = None,
     ):
         """Implements linear and finetune evaluation.
 
@@ -101,6 +138,7 @@ class LinearModel(pl.LightningModule):
 
         # add default values and assert that config has the basic needed settings
         cfg = self.add_and_assert_specific_cfg(cfg)
+        self.cfg = cfg
 
         # backbone
         self.backbone = backbone
@@ -149,6 +187,9 @@ class LinearModel(pl.LightningModule):
         # if finetuning the backbone
         self.finetune: bool = cfg.finetune
 
+        # if pre-extracting features
+        self.pre_extract_feats: bool = cfg.pre_extract_feats
+
         # for performance
         self.no_channel_last = cfg.performance.disable_channel_last
 
@@ -180,6 +221,10 @@ class LinearModel(pl.LightningModule):
 
         # whether or not to finetune the backbone
         cfg.finetune = omegaconf_select(cfg, "finetune", False)
+        cfg.pre_extract_feats = omegaconf_select(cfg, "pre_extract_feats", False)
+
+        if cfg.pre_extract_feats and cfg.finetune:
+            raise ValueError("Cannot pre-extract features and finetune the backbone at the same time.")
 
         # default for acc grad batches
         cfg.accumulate_grad_batches = omegaconf_select(cfg, "accumulate_grad_batches", 1)
@@ -284,6 +329,43 @@ class LinearModel(pl.LightningModule):
 
         return [optimizer], [scheduler]
 
+    def on_train_start(self) -> None:
+        if self.pre_extract_feats:
+            print("Extracting train features", self.trainer.local_rank)
+            train_feat, train_lab = extract_features(self.trainer.train_dataloader, self)
+            # print(f"RANK {self.trainer.local_rank}: {train_feat.shape=} {train_lab.shape=}")
+
+            print("Extracting val features", self.trainer.local_rank)
+            val_feat, val_lab = extract_features(self.trainer.val_dataloaders, self)
+            # print(f"RANK {self.trainer.local_rank}: {val_feat.shape=} {val_lab.shape=}")
+
+            self.backbone.cpu()
+            torch.cuda.empty_cache()
+            gc.collect()
+
+            train_dataloader = DataLoader(FeatureDataset(train_feat.detach().cpu(), train_lab.detach().cpu()),
+                                          batch_size=self.cfg.optimizer.batch_size,
+                                          shuffle=True,
+                                          num_workers=self.cfg.data.num_workers)
+
+            val_dataloader = DataLoader(FeatureDataset(val_feat.detach().cpu(), val_lab.detach().cpu()),
+                                        batch_size=self.cfg.optimizer.batch_size,
+                                        shuffle=False,
+                                        num_workers=self.cfg.data.num_workers)
+
+            self.trainer._data_connector.attach_data(self,
+                                                     train_dataloaders=train_dataloader,
+                                                     val_dataloaders=val_dataloader)
+            self.trainer._data_connector.prepare_data()
+            self.trainer.fit_loop.setup_data()
+            self.trainer.fit_loop.reset()
+            self.trainer.fit_loop.epoch_loop.val_loop.setup_data()
+
+            # print(f"RANK {self.trainer.local_rank}: {self.trainer.train_dataloader.dataset}")
+            # print(f"RANK {self.trainer.local_rank}: {self.trainer.train_dataloader.sampler}")
+            # print(f"RANK {self.trainer.local_rank}: Done")
+            self.trainer.strategy.barrier()
+
     def forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Performs forward pass of the frozen backbone and the linear layer for evaluation.
 
@@ -294,17 +376,19 @@ class LinearModel(pl.LightningModule):
             Dict[str, Any]: a dict containing features and logits.
         """
 
-        if not self.no_channel_last:
+        if not self.no_channel_last and not self.pre_extract_feats:
             X = X.to(memory_format=torch.channels_last)
 
-        with torch.set_grad_enabled(self.finetune):
-            feats = self.backbone(X)
-
+        if not self.pre_extract_feats or self.trainer.sanity_checking:
+            with torch.set_grad_enabled(self.finetune):
+                feats = self.backbone(X)
+        else:
+            feats = X
         logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
     def shared_step(
-        self, batch: Tuple, batch_idx: int
+            self, batch: Tuple, batch_idx: int
     ) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Performs operations that are shared between the training nd validation steps.
 
@@ -394,3 +478,15 @@ class LinearModel(pl.LightningModule):
 
         log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
         self.log_dict(log, sync_dist=True)
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        """Called when saving a checkpoint.
+
+        Args:
+            checkpoint (Dict[str, Any]): checkpoint to save.
+        """
+        # remove backbone from checkpoint
+        if not self.finetune:
+            for key in list(checkpoint["state_dict"].keys()):
+                if key.startswith("backbone"):
+                    del checkpoint["state_dict"][key]

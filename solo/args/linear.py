@@ -18,6 +18,8 @@ else:
 _N_CLASSES_PER_DATASET = {
     "cifar10": 10,
     "cifar100": 100,
+    "cifar10_224": 10,
+    "cifar100_224": 100,
     "stl10": 10,
     "imagenet": 1000,
     "imagenet100": 100,
@@ -30,6 +32,8 @@ _N_CLASSES_PER_DATASET = {
 _SUPPORTED_DATASETS = [
     "cifar10",
     "cifar100",
+    "cifar10_224",
+    "cifar100_224",
     "stl10",
     "imagenet",
     "imagenet100",

@@ -20,12 +20,13 @@
 import inspect
 import logging
 import os
+import warnings
 
 import hydra
 import torch
 import torch.nn as nn
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from omegaconf import DictConfig, OmegaConf
@@ -39,6 +40,8 @@ from solo.methods.linear import LinearModel
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
@@ -174,6 +177,7 @@ def main(cfg: DictConfig):
             logdir=os.path.join(cfg.checkpoint.dir, "linear"),
             frequency=cfg.checkpoint.frequency,
             keep_prev=cfg.checkpoint.keep_prev,
+            save_last=cfg.checkpoint.save_last,
         )
         callbacks.append(ckpt)
 
@@ -184,15 +188,20 @@ def main(cfg: DictConfig):
             project=cfg.wandb.project,
             entity=cfg.wandb.entity,
             offline=cfg.wandb.offline,
+            group=cfg.wandb.group,
+            job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
         )
-        wandb_logger.watch(model, log="gradients", log_freq=100)
+        # wandb_logger.watch(model, log="gradients", log_freq=100)
         wandb_logger.log_hyperparams(OmegaConf.to_container(cfg))
 
         # lr logging
         lr_monitor = LearningRateMonitor(logging_interval="step")
         callbacks.append(lr_monitor)
+
+        callbacks.append(ModelSummary(max_depth=1))
+
 
     trainer_kwargs = OmegaConf.to_container(cfg)
     # we only want to pass in valid Trainer args, the rest may be user specific
@@ -213,7 +222,7 @@ def main(cfg: DictConfig):
     if cfg.data.format == "dali":
         trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
     else:
-        trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_path)
+        trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=ckpt_path)
 
 
 if __name__ == "__main__":
