@@ -145,6 +145,7 @@ class DINO(BaseMomentumMethod):
         warmup_teacher_temperature: float = cfg.method_kwargs.warmup_teacher_temperature
         teacher_temperature: float = cfg.method_kwargs.teacher_temperature
         warmup_teacher_temperature_epochs: int = cfg.method_kwargs.warmup_teacher_temperature_epochs
+        warmup_teacher_temperature_steps: int = cfg.method_kwargs.warmup_teacher_temperature_steps
 
         # dino head
         self.head = DINOHead(
@@ -174,6 +175,7 @@ class DINO(BaseMomentumMethod):
             warmup_teacher_temp=warmup_teacher_temperature,
             teacher_temp=teacher_temperature,
             warmup_teacher_temp_epochs=warmup_teacher_temperature_epochs,
+            warmup_teacher_temp_steps=warmup_teacher_temperature_steps,
             num_epochs=self.max_epochs,
         )
 
@@ -222,6 +224,10 @@ class DINO(BaseMomentumMethod):
             cfg, "method_kwargs.warmup_teacher_temperature_epochs", 0
         )
 
+        cfg.method_kwargs.warmup_teacher_temperature_steps = omegaconf_select(
+            cfg, "method_kwargs.warmup_teacher_temperature_steps", None
+        )
+
         return cfg
 
     @property
@@ -264,6 +270,9 @@ class DINO(BaseMomentumMethod):
         """Updates the current epoch in DINO's loss object."""
         self.dino_loss_func.epoch = self.current_epoch
 
+    def on_train_start(self):
+        self.dino_loss_func.setup_temp_schedule(num_steps=self.trainer.estimated_stepping_batches)
+        super().on_train_start()
 
     def multicrop_forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Performs the forward pass for the multicrop views.
@@ -323,6 +332,9 @@ class DINO(BaseMomentumMethod):
         Returns:
             torch.Tensor: total loss composed of DINO loss and classification loss.
         """
+        self.dino_loss_func.step = self.global_step
+        self.log("teacher_temp", self.dino_loss_func.teacher_temp_schedule[self.global_step], on_epoch=True, sync_dist=False)
+        self.log("student_temp", self.dino_loss_func.student_temp, on_epoch=True, sync_dist=False)
 
         out = super().training_step(batch, batch_idx)
         class_loss = out["loss"]
