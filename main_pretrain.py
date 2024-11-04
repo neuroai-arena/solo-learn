@@ -115,6 +115,7 @@ def main(cfg: DictConfig):
         )
         callbacks.append(auto_umap)
 
+    d = os.environ["WANDB_DIR"] if "WANDB_DIR" in os.environ else "./"
     # wandb logging
     if cfg.wandb.enabled:
         wandb_logger = WandbLogger(
@@ -126,6 +127,7 @@ def main(cfg: DictConfig):
             job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
+            save_dir=d
         )
         wandb_logger.watch(model, log="gradients", log_freq=100)
         wandb_logger.log_hyperparams(OmegaConf.to_container(cfg))

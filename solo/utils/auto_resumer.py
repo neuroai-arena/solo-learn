@@ -77,12 +77,13 @@ class AutoResumer:
             if files:
                 # skip checkpoints that are empty
                 try:
-                    checkpoint_file = [rootdir / f for f in files if f.endswith(".ckpt")][0]
+                    checkpoint_file = [rootdir / f for f in sorted(files, reverse=True) if f.endswith(".ckpt")][0]
                 except:
                     continue
 
                 creation_time = datetime.fromtimestamp(os.path.getctime(checkpoint_file))
                 if current_time - creation_time < self.max_hours:
+                    # print("Found checkpoint", checkpoint_file)
                     ck = Checkpoint(
                         creation_time=creation_time,
                         args=rootdir / "args.json",
@@ -102,6 +103,7 @@ class AutoResumer:
                     for param in AutoResumer.SHOULD_MATCH
                 ):
                     wandb_run_id = getattr(candidate_cfg, "wandb_run_id", None)
+                    print("Found checkpoint:",wandb_run_id, candidate.checkpoint)
                     return candidate.checkpoint, wandb_run_id
 
         return None, None

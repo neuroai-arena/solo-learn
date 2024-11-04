@@ -183,6 +183,7 @@ def main(cfg: DictConfig):
 
     # wandb logging
     if cfg.wandb.enabled:
+        d = os.environ["WANDB_DIR"] if "WANDB_DIR" in os.environ else "./"
         wandb_logger = WandbLogger(
             name=cfg.name,
             project=cfg.wandb.project,
@@ -192,6 +193,7 @@ def main(cfg: DictConfig):
             job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
+            save_dir=d
         )
         # wandb_logger.watch(model, log="gradients", log_freq=100)
         wandb_logger.log_hyperparams(OmegaConf.to_container(cfg))

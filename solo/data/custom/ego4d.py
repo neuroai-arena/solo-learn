@@ -8,13 +8,15 @@ import numpy as np
 import torchvision
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision.transforms import InterpolationMode
 
 
 class Ego4d(Dataset):
 
     corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9), (40,8)]
-    def __init__(self, data_root, transform,gaze_size=224, time_window=30, center_crop=False, **kwargs):
-        super().__init__(**kwargs)
+    readded = [71,56,67,74]
+    def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, **kwargs):
+        super().__init__()
         assert gaze_size in  [114, 160, 224, 313, 440, 540]
 
         self.data_root = data_root
@@ -22,6 +24,7 @@ class Ego4d(Dataset):
         self.time_window = time_window
         self.center_crop = center_crop
         self.gaze_size = gaze_size
+        self.resize_gs = resize_gs
 
         self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95.h5"), "r")
         self.dataset = h5py.File(os.path.join(self.data_root, f"dataset_all95.h5"), "r")["data"]
@@ -29,6 +32,8 @@ class Ego4d(Dataset):
         b= np.ones((self.dataset.shape[0],), dtype=bool)
         for c in self.corrupted:
             b = b & ((self.dataset[:,5] != c[0]) | (self.dataset[:,11] != c[1]))
+        #for c in self.readded:
+        #    b = b & (self.dataset[:,5] != c)
         self.dataset = self.dataset[b]
 
 
@@ -79,6 +84,8 @@ class Ego4d(Dataset):
             return img
 
         if gaze_size == 540:
+            if self.resize_gs:
+                img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
             return img
 
         ### We extract the gaze location in the image
