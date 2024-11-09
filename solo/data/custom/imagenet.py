@@ -5,9 +5,12 @@ from pathlib import Path
 from typing import Union, Callable, Optional, Tuple
 
 import h5py
+import numpy as np
 import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
+
+from solo.data.custom.base import H5ClassificationDataset
 
 
 class ImgnetDataset(Dataset):
@@ -59,7 +62,7 @@ class ImgnetDataset(Dataset):
         return x, label
 
 
-class ImgNetDataset_42(Dataset):
+class ImgNetDataset_42(H5ClassificationDataset):
     def __init__(
             self,
             root: Union[str, Path],
@@ -67,16 +70,9 @@ class ImgNetDataset_42(Dataset):
             split: str = "train",
             imgnet100: bool = False
     ):
-        self.root = Path(root)
-        self.split = split
-        self.transform = transform
-        assert self.split in ["train", "val"]
-
-        self.h5_file = h5py.File(root / f"ImageNet_{split}.h5", "r")
-        self.mapper = pd.read_parquet(root / f"ImageNet_{split}_mapper.parquet")
-
+        super().__init__(root, transform, split, driver="core" if split == "train" and imgnet100 else None)
         if imgnet100:
-            with open(root / 'imagenet100_classes.txt') as f:
+            with open(self.root / 'imagenet100_classes.txt') as f:
                 imgnet100_classes = sorted(f.readline().strip().split())
             imgnet100_class_wn_2_class_index = {class_wn: class_index for class_index, class_wn in
                                                 enumerate(imgnet100_classes)}
@@ -88,14 +84,53 @@ class ImgNetDataset_42(Dataset):
         self.target_2_class_name = self.mapper[['target', 'class_name']].drop_duplicates().set_index('target')[
             'class_name'].to_dict()
 
+
+class ImageNetOODDataset(Dataset):
+    VERSION = ['colour',
+               'contrast',
+               'cue-conflict',
+               'edge',
+               'eidolonI',
+               'eidolonII',
+               'eidolonIII',
+               'false-colour',
+               'high-pass',
+               'low-pass',
+               'phase-scrambling',
+               'power-equalisation',
+               'rotation',
+               'silhouette',
+               'sketch',
+               'stylized',
+               'uniform-noise']
+
+    def __init__(self,
+                 path: str,
+                 version: str,
+                 return_classname: bool = False,
+                 transform: Optional[Callable] = None):
+        self.version = version
+        self.transform = transform
+        self.return_classname = return_classname
+        self.h5_file = h5py.File(path, "r", driver="core")
+
+        self.available_versions = list(self.h5_file.keys())
+        if not self.version in self.available_versions:
+            raise ValueError(f"Version {self.version} not available, choose one of {self.available_versions}")
+
     def __len__(self) -> int:
-        return len(self.mapper)
+        return self.h5_file.get(self.version).get('targets').shape[0]
 
-    def __getitem__(self, idx: int) -> Tuple[Image.Image, int]:
-        dp = self.mapper.loc[idx]
-        image = Image.open(io.BytesIO(self.h5_file.get("images")[dp["h5_index"]]))
+    def __getitem__(self, idx: int) -> Tuple[Image.Image, Union[str, np.ndarray]]:
+        version = self.h5_file.get(self.version)
+        image = Image.fromarray(version.get("images")[idx]).convert("RGB")
 
-        if self.transform:
+        if self.transform is not None:
             image = self.transform(image)
 
-        return image, dp["target"]
+        if self.return_classname:
+            targets = version.get("classnames")[idx]
+        else:
+            targets = version.get("targets")[idx]
+
+        return image, targets
