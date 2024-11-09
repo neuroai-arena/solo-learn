@@ -17,7 +17,7 @@ class Ego4d(Dataset):
     readded = [71,56,67,74]
     def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, **kwargs):
         super().__init__()
-        assert gaze_size in  [114, 160, 224, 313, 440, 540]
+        assert gaze_size in  [112, 114, 160, 224, 313, 336, 440, 448, 540]
 
         self.data_root = data_root
         self.transform = transform
