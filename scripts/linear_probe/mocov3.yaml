@@ -52,8 +52,8 @@ pre_extract_feats: False
 finetune: False
 
 # overwrite PL stuff
-max_epochs: 1
-devices: 2
+max_epochs: 100
+devices: 6
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
