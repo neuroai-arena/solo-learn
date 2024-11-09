@@ -20,26 +20,47 @@ _N_CLASSES_PER_DATASET = {
     "cifar100": 100,
     "cifar10_224": 10,
     "cifar100_224": 100,
-    "stl10": 10,
     "imagenet": 1000,
     "imagenet100": 100,
     "imagenet2": 1000,
     "imagenet2_100": 100,
-    "tiny": 200
+    "imagenet_42": 1000,
+    "imagenet100_42": 100,
+    "tiny": 200,
+    "core50": 50,
+    "DTD": 47,
+    "Flowers102": 102,
+    "FGVCAircraft": 100,
+    "Food101": 101,
+    "OxfordIIITPet": 37,
+    "Places365": 365,
+    "StanfordCars": 196,
+    "STL10": 10,
+    "Places365_h5": 365,
 }
-
 
 _SUPPORTED_DATASETS = [
     "cifar10",
     "cifar100",
     "cifar10_224",
     "cifar100_224",
-    "stl10",
     "imagenet",
     "imagenet100",
     "imagenet2",
     "imagenet2_100",
+    "imagenet_42",
+    "imagenet100_42",
+    'core50',
     "custom",
+    "DTD",
+    'Flowers102',
+    'FGVCAircraft',
+    'Food101',
+    'OxfordIIITPet',
+    'Places365',
+    'StanfordCars',
+    "STL10",
+    "Places365_h5"
 ]
 
 
@@ -61,6 +82,8 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
 
     cfg.data.format = omegaconf_select(cfg, "data.format", "image_folder")
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
+    cfg.data.train_backgrounds = omegaconf_select(cfg, "data.train_backgrounds", None)
+    cfg.data.val_backgrounds = omegaconf_select(cfg, "data.val_backgrounds", None)
 
     return cfg
 
@@ -130,6 +153,12 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     # default values for pytorch lightning stuff
     cfg = add_and_assert_lightning_cfg(cfg)
+
+    # early stopping
+    cfg.early_stopping.enabled = omegaconf_select(cfg, "early_stopping.enabled", False)
+    cfg.early_stopping.patience = omegaconf_select(cfg, "early_stopping.patience", 3)
+    cfg.early_stopping.monitor = omegaconf_select(cfg, "early_stopping.monitor", "val_loss")
+    cfg.early_stopping.mode = omegaconf_select(cfg, "early_stopping.mode", "min")
 
     # backbone
     assert not omegaconf.OmegaConf.is_missing(cfg, "backbone.name")

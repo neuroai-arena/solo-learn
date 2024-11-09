@@ -19,6 +19,7 @@
 
 import os
 from pathlib import Path
+import shutil
 from typing import Callable, Optional, Tuple, Union
 
 import torchvision
@@ -27,10 +28,11 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchvision import transforms
-from torchvision.datasets import STL10, ImageFolder
+from torchvision.datasets import ImageFolder
 
-from solo.data.custom.ego4d import Ego4d
-from solo.data.custom.imagenet import ImgnetDataset
+from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42
+from solo.data.custom.base import H5ClassificationDataset
+from solo.data.custom.core50 import Core50
 from solo.data.custom.tinyimgnet import TinyDataset
 
 try:
@@ -150,6 +152,25 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         )
     }
 
+    core50_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(256),  # resize shorter
+                transforms.CenterCrop(224),  # take center crop
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        )
+    }
+
     tiny_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -179,14 +200,25 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "cifar100": cifar_pipeline,
         "cifar10_224": cifar_scale_pipeline,
         "cifar100_224": cifar_scale_pipeline,
-        "stl10": stl_pipeline,
         "imagenet100": imagenet_pipeline,
         "imagenet": imagenet_pipeline,
         "imagenet2_100": imagenet_pipeline,
         "imagenet2": imagenet_pipeline,
+        "imagenet_42": imagenet_pipeline,
+        "imagenet100_42": imagenet_pipeline,
         "ego4d": imagenet_pipeline,
         "tiny": tiny_pipeline,
-        "custom": custom_pipeline
+        'core50': core50_pipeline,
+        "custom": custom_pipeline,
+        'DTD': imagenet_pipeline,
+        'Flowers102': imagenet_pipeline,
+        'FGVCAircraft': imagenet_pipeline,
+        'Food101': imagenet_pipeline,
+        'OxfordIIITPet': imagenet_pipeline,
+        'Places365': imagenet_pipeline,
+        'StanfordCars': imagenet_pipeline,
+        "STL10": stl_pipeline,
+        "Places365_h5": imagenet_pipeline
     }
 
     assert dataset in pipelines
@@ -236,8 +268,11 @@ def prepare_datasets(
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2",
-                       "imagenet2_100", "ego4d", "tiny", "cifar10_224", "cifar100_224"]
+    assert dataset in [
+        "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
+        "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5"
+    ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
         if dataset == "cifar10_224": dataset = "cifar10"
@@ -256,22 +291,46 @@ def prepare_datasets(
             download=download,
             transform=T_val,
         )
-    elif dataset in ["tiny"]:
-        train_dataset = TinyDataset(train_data_path, "train", T_train)
-        val_dataset = TinyDataset(val_data_path, "val", T_val)
-    elif dataset == "stl10":
-        train_dataset = STL10(
+    elif dataset in ['DTD', 'Flowers102', 'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars',
+                     'STL10']:
+        DatasetClass = vars(torchvision.datasets)[dataset]
+
+        if dataset == "StanfordCars" and download:
+            download = False
+            if not (Path(train_data_path) / 'stanford_cars').exists():
+                import kagglehub
+                kagglehub.login()
+                path = kagglehub.dataset_download("rickyyyyyyy/torchvision-stanford-cars", force_download=False)
+                ds_path = Path(path) / 'stanford_cars'
+                shutil.move(ds_path, train_data_path)
+
+        # some datasets have different names for their train split
+        if dataset == "Places365":
+            train_split = "train-standard"
+        elif dataset == "OxfordIIITPet":
+            train_split = "trainval"
+        else:
+            train_split = "train"
+
+        train_dataset = DatasetClass(
             train_data_path,
-            split="train",
-            download=True,
+            split=train_split,
+            download=download,
             transform=T_train,
         )
-        val_dataset = STL10(
+
+        val_dataset = DatasetClass(
             val_data_path,
             split="test",
             download=download,
             transform=T_val,
         )
+    elif dataset in ["Places365_h5"]:
+        train_dataset = H5ClassificationDataset(root=train_data_path, transform=T_train, split="train")
+        val_dataset = H5ClassificationDataset(root=val_data_path, transform=T_val, split="val")
+    elif dataset in ["tiny"]:
+        train_dataset = TinyDataset(train_data_path, "train", T_train)
+        val_dataset = TinyDataset(val_data_path, "val", T_val)
     elif dataset in ["ego4d"]:
         train_dataset = ImgnetDataset(val_data_path, "val", T_val,
                                       True)  # ImgnetDataset(train_data_path, "train", T_train, True)
@@ -279,7 +338,9 @@ def prepare_datasets(
     elif dataset in ["imagenet2", "imagenet2_100"]:
         train_dataset = ImgnetDataset(train_data_path, "train", T_train, dataset == "imagenet2_100")
         val_dataset = ImgnetDataset(val_data_path, "val", T_val, dataset == "imagenet2_100")
-
+    elif dataset in ["imagenet_42", "imagenet100_42"]:
+        train_dataset = ImgNetDataset_42(train_data_path, T_train, split="train", imgnet100=dataset == "imagenet100_42")
+        val_dataset = ImgNetDataset_42(val_data_path, T_val, split="val", imgnet100=dataset == "imagenet100_42")
     elif dataset in ["imagenet", "imagenet100", "custom"]:
         if data_format == "h5":
             assert _h5_available
@@ -288,7 +349,12 @@ def prepare_datasets(
         else:
             train_dataset = ImageFolder(train_data_path, T_train)
             val_dataset = ImageFolder(val_data_path, T_val)
-
+    elif dataset == 'core50':
+        assert 'train_backgrounds' in dataset_kwargs.keys()
+        assert 'val_backgrounds' in dataset_kwargs.keys()
+        train_dataset = Core50(h5_path=train_data_path, transform=T_train,
+                               backgrounds=dataset_kwargs['train_backgrounds'])
+        val_dataset = Core50(h5_path=val_data_path, transform=T_val, backgrounds=dataset_kwargs['val_backgrounds'])
     if data_fraction > 0:
         assert data_fraction < 1, "Only use data_fraction for values smaller than 1."
         data = train_dataset.samples
