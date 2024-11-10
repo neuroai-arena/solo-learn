@@ -1,22 +1,5 @@
 # Copyright 2023 solo-learn development team.
 import gc
-# Permission is hereby granted, free of charge, to any person obtaining a copy of
-# this software and associated documentation files (the "Software"), to deal in
-# the Software without restriction, including without limitation the rights to use,
-# copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
-# Software, and to permit persons to whom the Software is furnished to do so,
-# subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all copies
-# or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-# OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-
 import logging
 from typing import Any, Callable, Dict, List, Tuple, Union
 
@@ -199,6 +182,7 @@ class LinearModel(pl.LightningModule):
 
         # keep track of validation metrics
         self.validation_step_outputs = []
+        self.max_val_acc_top1 = torch.tensor(0.0)
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -402,6 +386,7 @@ class LinearModel(pl.LightningModule):
         """
 
         X, target = batch
+        target = target.long()
 
         metrics = {"batch_size": X.size(0)}
         if self.training and self.mixup_func is not None:
@@ -477,6 +462,10 @@ class LinearModel(pl.LightningModule):
         self.validation_step_outputs.clear()
 
         log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
+
+        self.max_val_acc_top1 = torch.max(self.max_val_acc_top1, torch.tensor(val_acc1))
+        self.log("max_val_acc_top1", self.max_val_acc_top1, sync_dist=True)
+
         self.log_dict(log, sync_dist=True)
 
     # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:

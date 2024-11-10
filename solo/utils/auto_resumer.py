@@ -59,10 +59,12 @@ class AutoResumer:
         cfg.auto_resume = omegaconf_select(cfg, "auto_resume", default={})
         cfg.auto_resume.enabled = omegaconf_select(cfg, "auto_resume.enabled", default=False)
         cfg.auto_resume.max_hours = omegaconf_select(cfg, "auto_resume.max_hours", default=36)
+        cfg.auto_resume.step = omegaconf_select(cfg, "auto_resume.step", default=None)
+        cfg.auto_resume.epoch = omegaconf_select(cfg, "auto_resume.epoch", default=None)
 
         return cfg
 
-    def find_checkpoint(self, cfg: DictConfig):
+    def find_checkpoint(self, cfg: DictConfig, step: int = None, epoch: int = None):
         """Finds a valid checkpoint that matches the arguments
 
         Args:
@@ -75,35 +77,42 @@ class AutoResumer:
         for rootdir, _, files in os.walk(self.checkpoint_dir):
             rootdir = Path(rootdir)
             if files:
-                # skip checkpoints that are empty
-                try:
-                    checkpoint_file = [rootdir / f for f in sorted(files, reverse=True) if f.endswith(".ckpt")][0]
-                except:
-                    continue
-
-                creation_time = datetime.fromtimestamp(os.path.getctime(checkpoint_file))
-                if current_time - creation_time < self.max_hours:
-                    # print("Found checkpoint", checkpoint_file)
-                    ck = Checkpoint(
-                        creation_time=creation_time,
-                        args=rootdir / "args.json",
-                        checkpoint=checkpoint_file,
-                    )
-                    candidates.append(ck)
+                for checkpoint_file in sorted([rootdir / f for f in files if f.endswith(".ckpt")]):
+                    creation_time = datetime.fromtimestamp(os.path.getctime(checkpoint_file))
+                    if current_time - creation_time < self.max_hours:
+                        ck = Checkpoint(
+                            creation_time=creation_time,
+                            args=rootdir / "args.json",
+                            checkpoint=checkpoint_file,
+                        )
+                        candidates.append(ck)
 
         if candidates:
             # sort by most recent
             candidates = sorted(candidates, key=lambda ck: ck.creation_time, reverse=True)
 
             for candidate in candidates:
+                if not Path(candidate.args).exists():
+                    continue
                 candidate_cfg = DictConfig(json.load(open(candidate.args)))
                 if all(
                     omegaconf_select(candidate_cfg, param, None)
                     == omegaconf_select(cfg, param, None)
                     for param in AutoResumer.SHOULD_MATCH
                 ):
+                    import torch
+                    ckpt = torch.load(candidate.checkpoint, map_location="cpu")
+                    ckpt_global_step = ckpt['global_step'] - 1
+                    ckpt_epoch = ckpt['epoch']
+
+                    if step is not None and step != ckpt_global_step:
+                        continue
+                    if epoch is not None and epoch != ckpt_epoch:
+                        continue
+
                     wandb_run_id = getattr(candidate_cfg, "wandb_run_id", None)
-                    print("Found checkpoint:",wandb_run_id, candidate.checkpoint)
+
+                    print("Found", candidate.checkpoint)
                     return candidate.checkpoint, wandb_run_id
 
         return None, None

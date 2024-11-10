@@ -27,7 +27,7 @@ import hydra
 import torch
 import torch.nn as nn
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary, EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from omegaconf import DictConfig, OmegaConf
@@ -130,6 +130,8 @@ def main(cfg: DictConfig):
         batch_size=cfg.optimizer.batch_size,
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
+        train_backgrounds=cfg.data.train_backgrounds,
+        val_backgrounds=cfg.data.val_backgrounds
     )
 
     if cfg.data.format == "dali":
@@ -184,6 +186,11 @@ def main(cfg: DictConfig):
         )
         callbacks.append(ckpt)
 
+        if cfg.early_stopping.enabled:
+            es = EarlyStopping(monitor=cfg.early_stopping.monitor, patience=cfg.early_stopping.patience,
+                               mode=cfg.early_stopping.mode)
+            callbacks.append(es)
+
     # wandb logging
     if cfg.wandb.enabled:
         d = os.environ["WANDB_DIR"] if "WANDB_DIR" in os.environ else "./"
@@ -205,7 +212,7 @@ def main(cfg: DictConfig):
         lr_monitor = LearningRateMonitor(logging_interval="step")
         callbacks.append(lr_monitor)
 
-        callbacks.append(ModelSummary(max_depth=1))
+    callbacks.append(ModelSummary(max_depth=1))
 
 
     trainer_kwargs = OmegaConf.to_container(cfg)
