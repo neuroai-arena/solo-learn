@@ -20,6 +20,7 @@
 import inspect
 import logging
 import os
+import re
 import warnings
 
 import hydra
@@ -72,6 +73,7 @@ def main(cfg: DictConfig):
             backbone.maxpool = nn.Identity()
 
     ckpt_path = cfg.pretrained_feature_extractor
+
     assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
 
     state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
@@ -152,13 +154,15 @@ def main(cfg: DictConfig):
 
     # 1.7 will deprecate resume_from_checkpoint, but for the moment
     # the argument is the same, but we need to pass it as ckpt_path to trainer.fit
-    ckpt_path, wandb_run_id = None, None
+    ckpt_path, wandb_run_id, resume_from_checkpoint = None, None, None
     if cfg.auto_resume.enabled and cfg.resume_from_checkpoint is None:
         auto_resumer = AutoResumer(
             checkpoint_dir=os.path.join(cfg.checkpoint.dir, "linear"),
             max_hours=cfg.auto_resume.max_hours,
         )
         resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg)
+        print(cfg.auto_resume.enabled, cfg.resume_from_checkpoint,cfg.auto_resume.max_hours, resume_from_checkpoint)
+
         if resume_from_checkpoint is not None:
             print(
                 "Resuming from previous checkpoint that matches specifications:",
@@ -168,7 +172,6 @@ def main(cfg: DictConfig):
     elif cfg.resume_from_checkpoint is not None:
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
-
     callbacks = []
 
     if cfg.checkpoint.enabled:
@@ -219,8 +222,23 @@ def main(cfg: DictConfig):
             else cfg.strategy,
         }
     )
-    trainer = Trainer(**trainer_kwargs)
 
+    if resume_from_checkpoint is not None:
+        m2 = torch.load(ckpt_path)
+        print(m2.keys())
+        # m2 = m2["state_dict"]
+        state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+        new_state_dict = {}
+        for k, w in state_dict.items():
+            if re.search("^backbone.*", k):
+                k = ".".join(k.split(".")[1:])
+                new_state_dict[k] = w
+
+        m2["backbone"] = new_state_dict
+        ckpt_path = str(ckpt_path)[:-5]+"v2.ckpt"
+        torch.save(m2, ckpt_path)
+
+    trainer = Trainer(**trainer_kwargs)
     if cfg.data.format == "dali":
         trainer.fit(model, ckpt_path=ckpt_path, datamodule=dali_datamodule)
     else:

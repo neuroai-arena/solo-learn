@@ -13,7 +13,7 @@ def str2table(v):
     return v.split(',')
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_root", type=str, default="/scratch/autolearn/aubret/ego4dv2")
+parser.add_argument("--data_root", type=str, default="/scratch/modelrep/schaumloeffel/Ego4d/")
 parser.add_argument("--range", type=int, default=95)
 # parser.add_argument("--omit", type=str2table, default=[71,56,67,74])
 parser.add_argument("--omit", type=str2table, default=[])
@@ -22,7 +22,7 @@ args=parser.parse_args()
 print(args.omit)
 
 
-filename = os.path.join(args.data_root, f"dataset_all{args.range}.h5")
+filename = os.path.join(args.data_root, f"dataset_all{args.range}v2.h5")
 
 types = {i: "float32" for i in range(6,12)}
 types.update({0: "string", 1: "int32", 2: "int32"})
@@ -62,7 +62,7 @@ for p in trange(args.range):
 
 
 
-hdf5_file = h5py.File(os.path.join(args.data_root, f"data_all{str(args.range)}.h5"), "w")
+hdf5_file = h5py.File(os.path.join(args.data_root, f"data_all{str(args.range)}v2.h5"), "w")
 for p2 in range(args.range):
     if p in args.omit:
         continue

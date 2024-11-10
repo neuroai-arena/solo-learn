@@ -1,3 +1,5 @@
 enabled: True
 entity: None
-project: "solo-learn"
+project: "EgocentricVision"
+group: "mocov3-rn50"
+job_type: "linear_probe"

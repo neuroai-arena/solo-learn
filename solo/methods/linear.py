@@ -479,14 +479,14 @@ class LinearModel(pl.LightningModule):
         log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
         self.log_dict(log, sync_dist=True)
 
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        """Called when saving a checkpoint.
-
-        Args:
-            checkpoint (Dict[str, Any]): checkpoint to save.
-        """
-        # remove backbone from checkpoint
-        if not self.finetune:
-            for key in list(checkpoint["state_dict"].keys()):
-                if key.startswith("backbone"):
-                    del checkpoint["state_dict"][key]
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+    #     """Called when saving a checkpoint.
+    #
+    #     Args:
+    #         checkpoint (Dict[str, Any]): checkpoint to save.
+    #     """
+    #     # remove backbone from checkpoint
+    #     if not self.finetune:
+    #         for key in list(checkpoint["state_dict"].keys()):
+    #             if key.startswith("backbone"):
+    #                 del checkpoint["state_dict"][key]

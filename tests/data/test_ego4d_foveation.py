@@ -1,3 +1,14 @@
+import os.path
+import sys
+import pandas
+
+sys.path.append("../..")
+
+import torch
+import torchvision.utils
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from solo.data.pretrain_dataloader import NCropAugmentation
 import copy
 import io
 import os
@@ -11,7 +22,6 @@ from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
 
 from solo.data.foveation import foveation
-
 
 class Ego4d(Dataset):
 
@@ -29,29 +39,11 @@ class Ego4d(Dataset):
         self.resize_gs = resize_gs
         self.foveation = foveation
 
-        self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95v2.h5"), "r")
-        self.dataset = h5py.File(os.path.join(self.data_root, f"dataset_all95v2.h5"), "r")["data"]
+        self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data0.hdf5"), "r")
+        self.dataset = pandas.read_csv(os.path.join(self.data_root, f"dataset0.csv"), header=None)
 
-        b= np.ones((self.dataset.shape[0],), dtype=bool)
-        for c in self.corrupted:
-            b = b & ((self.dataset[:,5] != c[0]) | (self.dataset[:,11] != c[1]))
-        #for c in self.readded:
-        #    b = b & (self.dataset[:,5] != c)
-        self.dataset = self.dataset[b]
-
-
-
-        # self.dataset = self.dataset[(self.dataset[:,5] == 0) & (self.dataset[:,11] == 0) & (self.dataset[:,6] < 40) ]
         self.gaze_index = (9, 10)
 
-        # blurred_frames = np.load(os.path.join(self.data_root, f"unblur_all.npy"),)
-        # if not unblur:
-        #     blurred_frames[:]=False
-        # self.bool_clear_frames = blurred_frames == 0
-        # self.clear_frames = np.where(self.bool_clear_frames)[0]
-
-        # if ego4d_subset != 1:
-        #     self.clear_frames = self.clear_frames[:int(len(self.clear_frames)*ego4d_subset)]
         self.size = len(self.dataset)
         print("Length:", self.size)
 
@@ -60,14 +52,14 @@ class Ego4d(Dataset):
         return self.size
 
     def open_image(self, row):
-        index, number, partition = int(row[6]), int(row[11]), str(int(row[5]))
+        index, number= int(row[6]), int(row[11])
         # print(partition, number, index, flush=True)
 
         gaze_size = self.gaze_size
         if gaze_size == -1:
             gaze_size = random.choice([114, 160, 224, 313, 439, 540])
 
-        binimg = self.hdf5_file.get(partition).get("frames").get(f"images540_{str(number)}")[index]
+        binimg = self.hdf5_file.get("frames").get(f"images540_{str(number)}")[index]
         img = Image.open(io.BytesIO(binimg))
 
 
@@ -93,14 +85,12 @@ class Ego4d(Dataset):
                                                              gaze_size,
                                                          )
 
-
-
         return img
 
     def __getitem__(self, idx):
         self.idx = idx
         # idx = self.clear_frames[idx]
-        r = self.dataset[idx]
+        r = self.dataset.iloc[idx]
         image, video_name = self.open_image(r), r[0]
 
         if self.time_window == 0:
@@ -120,3 +110,29 @@ class Ego4d(Dataset):
 
         image_pair = self.open_image(rn) if new_idx != idx else image
         return self.transform(image, image_pair), -1
+
+
+
+
+
+
+
+# t= NCropAugmentation( transforms.Compose([transforms.RandomResizedCrop((224,224),interpolation=InterpolationMode.BICUBIC), transforms.ToTensor()]), 2)
+t= NCropAugmentation( transforms.Compose([transforms.CenterCrop((540,540))]), 2)
+dataset_v1 = Ego4d("/scratch/autolearn/aubret/ego4dv2/", t, gaze_size=224, time_window=0, foveation={"kerW_coef":0.04})
+dataloader_v1 = DataLoader(dataset_v1, shuffle=False, batch_size=1, num_workers=1)
+
+torch.manual_seed(0)
+itv1 = iter(dataloader_v1)
+
+
+if not os.path.exists("/scratch/autolearn/aubret/ego4d/samples_fov"):
+    os.makedirs("/scratch/autolearn/aubret/ego4d/samples_fov")
+
+
+for i, i1 in enumerate(itv1):
+    torchvision.utils.save_image(i1[0][0], f"/scratch/autolearn/aubret/ego4d/samples_fov/{i}_1.png")
+    torchvision.utils.save_image(i1[0][1], f"/scratch/autolearn/aubret/ego4d/samples_fov/{i}_2.png")
+    # torchvision.utils.save_image(i2[0][0], f"/scratch/autolearn/aubret/ego4d/samplesv2/{i}.png")
+    if i > 30:
+        break
