@@ -186,10 +186,10 @@ def main(cfg: DictConfig):
         )
         callbacks.append(ckpt)
 
-        if cfg.early_stopping.enabled:
-            es = EarlyStopping(monitor=cfg.early_stopping.monitor, patience=cfg.early_stopping.patience,
-                               mode=cfg.early_stopping.mode)
-            callbacks.append(es)
+    if cfg.early_stopping.enabled:
+        es = EarlyStopping(monitor=cfg.early_stopping.monitor, patience=cfg.early_stopping.patience,
+                           mode=cfg.early_stopping.mode)
+        callbacks.append(es)
 
     # wandb logging
     if cfg.wandb.enabled:
