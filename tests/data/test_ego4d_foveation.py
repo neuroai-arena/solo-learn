@@ -1,6 +1,7 @@
 import os.path
 import sys
 import pandas
+from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 sys.path.append("../..")
 
@@ -8,7 +9,7 @@ import torch
 import torchvision.utils
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from solo.data.pretrain_dataloader import NCropAugmentation
+from solo.data.pretrain_dataloader import NCropAugmentation, GaussianBlur, Solarization, Equalization
 import copy
 import io
 import os
@@ -71,8 +72,12 @@ class Ego4d(Dataset):
                 img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
         elif self.foveation:
             ### We extract the gaze location in the image
+            imtsr = torchvision.transforms.functional.to_tensor(img)
+            print(imtsr.dtype, imtsr.shape)
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
             img = foveation(img, (gaze_y, gaze_x), **self.foveation)
+            print(img.dtype, img.shape)
+            img = torchvision.transforms.functional.to_pil_image(img)
         else:
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
             gaze_x += - max(0,gaze_x + gaze_size//2 - 540) - min(0, gaze_x - gaze_size//2)
@@ -115,10 +120,50 @@ class Ego4d(Dataset):
 
 
 
+def build_transform_pipeline():
+    mean, std = IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
+    augmentations = []
+    augmentations.append(
+        transforms.RandomResizedCrop(
+            224,
+            scale=(0.2, 1),
+            interpolation=transforms.InterpolationMode.BICUBIC,
+        ),
+    )
+
+
+    augmentations.append(
+        transforms.RandomApply(
+            [
+                transforms.ColorJitter(
+                    0.4,
+                    0.4,
+                    0.2,
+                    0.1,
+                )
+            ],
+            p=0.8,
+        ),
+    )
+
+    augmentations.append(transforms.RandomGrayscale(p=0.1))
+    augmentations.append(transforms.RandomApply([GaussianBlur()], p=0.1))
+    augmentations.append(transforms.RandomApply([Solarization()], p=0.2))
+    augmentations.append(transforms.RandomApply([Equalization()], p=0))
+    augmentations.append(transforms.RandomHorizontalFlip(p=0.5))
+    augmentations.append(transforms.ToTensor())
+    # augmentations.append(transforms.Normalize(mean=mean, std=std))
+
+    augmentations = transforms.Compose(augmentations)
+    return augmentations
+
 
 
 # t= NCropAugmentation( transforms.Compose([transforms.RandomResizedCrop((224,224),interpolation=InterpolationMode.BICUBIC), transforms.ToTensor()]), 2)
-t= NCropAugmentation( transforms.Compose([transforms.CenterCrop((540,540))]), 2)
+
+t =NCropAugmentation(build_transform_pipeline(), 2)
+# t= NCropAugmentation( transforms.Compose([transforms.CenterCrop((540,540))]), 2)
 dataset_v1 = Ego4d("/scratch/autolearn/aubret/ego4dv2/", t, gaze_size=224, time_window=0, foveation={"kerW_coef":0.04})
 dataloader_v1 = DataLoader(dataset_v1, shuffle=False, batch_size=1, num_workers=1)
 

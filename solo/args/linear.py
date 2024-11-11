@@ -37,6 +37,7 @@ _N_CLASSES_PER_DATASET = {
     "StanfordCars": 196,
     "STL10": 10,
     "Places365_h5": 365,
+    "SUN397": 397,
 }
 
 _SUPPORTED_DATASETS = [
@@ -60,7 +61,8 @@ _SUPPORTED_DATASETS = [
     'Places365',
     'StanfordCars',
     "STL10",
-    "Places365_h5"
+    "Places365_h5",
+    "SUN397"
 ]
 
 
@@ -155,6 +157,7 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     cfg = add_and_assert_lightning_cfg(cfg)
 
     # early stopping
+    cfg.early_stopping = omegaconf_select(cfg, "early_stopping", {})
     cfg.early_stopping.enabled = omegaconf_select(cfg, "early_stopping.enabled", False)
     cfg.early_stopping.patience = omegaconf_select(cfg, "early_stopping.patience", 3)
     cfg.early_stopping.monitor = omegaconf_select(cfg, "early_stopping.monitor", "val_loss")

@@ -230,20 +230,20 @@ def main(cfg: DictConfig):
         }
     )
 
-    if resume_from_checkpoint is not None:
-        m2 = torch.load(ckpt_path)
-        print(m2.keys())
-        # m2 = m2["state_dict"]
-        state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
-        new_state_dict = {}
-        for k, w in state_dict.items():
-            if re.search("^backbone.*", k):
-                k = ".".join(k.split(".")[1:])
-                new_state_dict[k] = w
-
-        m2["backbone"] = new_state_dict
-        ckpt_path = str(ckpt_path)[:-5]+"v2.ckpt"
-        torch.save(m2, ckpt_path)
+    # if resume_from_checkpoint is not None:
+    #     m2 = torch.load(ckpt_path)
+    #     print(m2.keys())
+    #     # m2 = m2["state_dict"]
+    #     state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+    #     new_state_dict = {}
+    #     for k, w in state_dict.items():
+    #         if re.search("^backbone.*", k):
+    #             k = ".".join(k.split(".")[1:])
+    #             new_state_dict[k] = w
+    #
+    #     m2["backbone"] = new_state_dict
+    #     ckpt_path = str(ckpt_path)[:-5]+"v2.ckpt"
+    #     torch.save(m2, ckpt_path)
 
     trainer = Trainer(**trainer_kwargs)
     if cfg.data.format == "dali":

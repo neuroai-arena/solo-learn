@@ -218,7 +218,8 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         'Places365': imagenet_pipeline,
         'StanfordCars': imagenet_pipeline,
         "STL10": stl_pipeline,
-        "Places365_h5": imagenet_pipeline
+        "Places365_h5": imagenet_pipeline,
+        "SUN397": imagenet_pipeline
     }
 
     assert dataset in pipelines
@@ -271,7 +272,7 @@ def prepare_datasets(
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
         "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
-        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5"
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5", "SUN397"
     ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
@@ -292,7 +293,7 @@ def prepare_datasets(
             transform=T_val,
         )
     elif dataset in ['DTD', 'Flowers102', 'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars',
-                     'STL10']:
+                     'STL10', 'SUN397']:
         DatasetClass = vars(torchvision.datasets)[dataset]
 
         if dataset == "StanfordCars" and download:
