@@ -32,7 +32,7 @@ class H5ClassificationDataset(Dataset):
             self.mapper = pd.read_parquet(self.root / self._MAPPER_FILENAME.format(split=self.split))
 
     def __len__(self) -> int:
-        return len(self.h5_file.get("images"))
+        return len(self.h5_file.get("images")) if self.mapper is None else len(self.mapper)
 
     def __getitem__(self, idx: int) -> Tuple[Image.Image, int]:
         if self.mapper is None:
