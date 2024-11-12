@@ -73,10 +73,8 @@ class Ego4d(Dataset):
         elif self.foveation:
             ### We extract the gaze location in the image
             imtsr = torchvision.transforms.functional.to_tensor(img)
-            print(imtsr.dtype, imtsr.shape)
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
             img = foveation(img, (gaze_y, gaze_x), **self.foveation)
-            print(img.dtype, img.shape)
             img = torchvision.transforms.functional.to_pil_image(img)
         else:
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries

@@ -83,6 +83,8 @@ class Ego4d(Dataset):
             img = foveation(img, (gaze_y, gaze_x), **self.foveation)
             img = torchvision.transforms.functional.to_pil_image(img)
         else:
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
+
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
             gaze_x += - max(0,gaze_x + gaze_size//2 - 540) - min(0, gaze_x - gaze_size//2)
             gaze_y += - max(0,gaze_y + gaze_size//2 - 540) - min(0, gaze_y - gaze_size//2)
