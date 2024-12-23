@@ -27,6 +27,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from omegaconf import DictConfig, OmegaConf
+
 from solo.args.pretrain import parse_cfg
 from solo.data.StatefulDistributeSampler import DataPrepIterCheck
 
@@ -34,6 +35,7 @@ from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous, omegaconf_select
+from solo.utils.knn_callback import KNNCallback
 
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule, build_transform_pipeline_dali
@@ -48,6 +50,7 @@ except ImportError:
     _umap_available = False
 else:
     _umap_available = True
+
 
 @hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
@@ -66,12 +69,12 @@ def main(cfg: DictConfig):
 
     model = METHODS[cfg.method](cfg)
     make_contiguous(model)
+
     # can provide up to ~20% speed up
     if not cfg.performance.disable_channel_last:
         model = model.to(memory_format=torch.channels_last)
 
     # validation dataloader for when it is available
-
 
     # 1.7 will deprecate resume_from_checkpoint, but for the moment
     # the argument is the same, but we need to pass it as ckpt_path to trainer.fit
@@ -81,7 +84,8 @@ def main(cfg: DictConfig):
             checkpoint_dir=os.path.join(cfg.checkpoint.dir, cfg.method),
             max_hours=cfg.auto_resume.max_hours,
         )
-        resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg)
+        resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg, step=cfg.auto_resume.step,
+                                                                            epoch=cfg.auto_resume.epoch)
         if resume_from_checkpoint is not None:
             print(
                 "Resuming from previous checkpoint that matches specifications:",
@@ -93,6 +97,9 @@ def main(cfg: DictConfig):
         del cfg.resume_from_checkpoint
 
     callbacks = []
+
+    if cfg.knn_clb.enabled:
+        callbacks.append(KNNCallback(cfg.knn_clb))
 
     if cfg.checkpoint.enabled:
         ckpt = Checkpointer(

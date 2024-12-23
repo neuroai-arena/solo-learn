@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 
 class H5ClassificationDataset(Dataset):
-    _SPLITS = ["train", "val"]
+    _SPLITS = ["train", "val", "test"]
     _H5_FILENAME = "{split}.h5"
     _MAPPER_FILENAME = "{split}_mapper.parquet"
 
@@ -25,7 +25,10 @@ class H5ClassificationDataset(Dataset):
         self.transform = transform
         assert self.split in self._SPLITS
 
-        self.h5_file = h5py.File(self.root / self._H5_FILENAME.format(split=self.split), "r", driver=driver)
+        h5_path = self.root / self._H5_FILENAME.format(split=self.split)
+        if not h5_path.exists():
+            raise FileNotFoundError(f"{h5_path} does not exists.")
+        self.h5_file = h5py.File(h5_path, "r", driver=driver)
 
         self.mapper = None
         if "targets" not in self.h5_file.keys():

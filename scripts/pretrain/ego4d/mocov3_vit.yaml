@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - augmentations: asymmetric.yaml
-  - wandb: private.yaml
+  - wandb: ts_aubret.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -11,55 +11,71 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d"
+name: "mocov3_vit_gs336_t15"
 method: "mocov3"
 backbone:
-  name: "vit_small"
+  name: "vit_base"
+  kwargs:
+    patch_size: 16
 method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
   pred_hidden_dim: 4096
-  temperature: 0.1
+  temperature: 0.2
 momentum:
-  base_tau: 0.996
-  final_tau: 0.996
+  base_tau: 0.99
+  final_tau: 1.00
 data:
   dataset: ego4d
-  train_path: "/scratch/autolearn/aubret/ego4dv2/"
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/Ego4d/h5"
   val_path: None
   format: "h5"
-  num_workers: 4
+  num_workers: 8
   dataset_kwargs:
-    gaze_size: 224
+    gaze_size: 336
     time_window: 15
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
+    resize_gs: False  # resize gaze to 224 before applying transform
 optimizer:
   name: "adamw"
-  batch_size: 128
-  lr: 0.001
+  batch_size: 256
+  lr: 1.5e-4
   classifier_lr: 3e-3
-  weight_decay: 0.04
+  weight_decay: 0.1
   no_labels: True
 scheduler:
   name: "warmup_cosine"
-  warmup_epochs: 0.01
+  warmup_epochs: 0.4
 checkpoint:
   enabled: True
-  dir: "trained_models"
+  dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
   frequency: 1
   keep_prev: True
-  every_n_iter: 5000
+  every_n_iter: 1000
 auto_resume:
+  enabled: False
+
+knn_clb:
   enabled: True
+  dataset: imagenet100_42
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets"
+  val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+  num_workers: 4
+  batch_size: 64
+  k: [10, 20, 50, 100]
+  perform_on_validation: False
+  perform_every_n_batches: 0.05 # perform every 10% of the training batches
+  verbose: True
+
 # overwrite PL stuff
 max_epochs: 1
 devices: 8
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 32
+precision: 16
 no_validation: True
 limit_val_batches: 0
 num_sanity_val_steps: 0
-val_check_interval: 5000
-log_every_n_steps: 50
+val_check_interval: 100
+log_every_n_steps: 100

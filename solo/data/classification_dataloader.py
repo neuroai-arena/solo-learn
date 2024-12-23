@@ -32,7 +32,7 @@ from torchvision.datasets import ImageFolder
 
 from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42
 from solo.data.custom.base import H5ClassificationDataset
-from solo.data.custom.core50 import Core50
+from solo.data.custom.core50 import Core50, Core50ForBGClassification
 from solo.data.custom.tinyimgnet import TinyDataset
 
 try:
@@ -171,6 +171,25 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         )
     }
 
+    toybox_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.6, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(256),  # resize shorter
+                transforms.CenterCrop(224),  # take center crop
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        )
+    }
+
     tiny_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -209,6 +228,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "ego4d": imagenet_pipeline,
         "tiny": tiny_pipeline,
         'core50': core50_pipeline,
+        'core50_bg': core50_pipeline,
         "custom": custom_pipeline,
         'DTD': imagenet_pipeline,
         'Flowers102': imagenet_pipeline,
@@ -219,7 +239,10 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         'StanfordCars': imagenet_pipeline,
         "STL10": stl_pipeline,
         "Places365_h5": imagenet_pipeline,
-        "SUN397": imagenet_pipeline
+        "SUN397": imagenet_pipeline,
+        "imagenet1pct_42": imagenet_pipeline,
+        "imagenet10pct_42": imagenet_pipeline,
+        "toybox": toybox_pipeline
     }
 
     assert dataset in pipelines
@@ -272,7 +295,8 @@ def prepare_datasets(
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
         "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
-        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5", "SUN397"
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5", "SUN397",
+        "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg'
     ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
@@ -293,7 +317,7 @@ def prepare_datasets(
             transform=T_val,
         )
     elif dataset in ['DTD', 'Flowers102', 'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars',
-                     'STL10', 'SUN397']:
+                     'STL10', 'SUN397', 'Caltech101']:
         DatasetClass = vars(torchvision.datasets)[dataset]
 
         if dataset == "StanfordCars" and download:
@@ -339,9 +363,18 @@ def prepare_datasets(
     elif dataset in ["imagenet2", "imagenet2_100"]:
         train_dataset = ImgnetDataset(train_data_path, "train", T_train, dataset == "imagenet2_100")
         val_dataset = ImgnetDataset(val_data_path, "val", T_val, dataset == "imagenet2_100")
-    elif dataset in ["imagenet_42", "imagenet100_42"]:
-        train_dataset = ImgNetDataset_42(train_data_path, T_train, split="train", imgnet100=dataset == "imagenet100_42")
-        val_dataset = ImgNetDataset_42(val_data_path, T_val, split="val", imgnet100=dataset == "imagenet100_42")
+    elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42"]:
+        if dataset == "imagenet100_42":
+            subset = "imgnet100"
+        elif dataset == "imagenet1pct_42":
+            subset = "1pct"
+        elif dataset == "imagenet10pct_42":
+            subset = "10pct"
+        else:
+            subset = None
+
+        train_dataset = ImgNetDataset_42(Path(train_data_path) / 'ImageNet/h5', T_train, split="train", subset=subset)
+        val_dataset = ImgNetDataset_42(Path(val_data_path) / 'ImageNet/h5', T_val, split="val", subset=subset)
     elif dataset in ["imagenet", "imagenet100", "custom"]:
         if data_format == "h5":
             assert _h5_available
@@ -353,9 +386,18 @@ def prepare_datasets(
     elif dataset == 'core50':
         assert 'train_backgrounds' in dataset_kwargs.keys()
         assert 'val_backgrounds' in dataset_kwargs.keys()
-        train_dataset = Core50(h5_path=train_data_path, transform=T_train,
+        train_dataset = Core50(h5_path=Path(train_data_path) / 'core50_350x350/core50_arr.h5', transform=T_train,
                                backgrounds=dataset_kwargs['train_backgrounds'])
-        val_dataset = Core50(h5_path=val_data_path, transform=T_val, backgrounds=dataset_kwargs['val_backgrounds'])
+        val_dataset = Core50(h5_path=Path(val_data_path) / 'core50_350x350/core50_arr.h5', transform=T_val,
+                             backgrounds=dataset_kwargs['val_backgrounds'])
+    elif dataset == 'core50_bg':
+        train_dataset = Core50ForBGClassification(h5_path=Path(train_data_path) / 'core50_350x350/core50_arr.h5',
+                                                  split="train", transform=T_train)
+        val_dataset = Core50ForBGClassification(h5_path=Path(val_data_path) / 'core50_350x350/core50_arr.h5',
+                                                split="test", transform=T_val)
+    elif dataset == "toybox":
+        train_dataset = H5ClassificationDataset(Path(train_data_path) / 'ToyBox/h5', split="train", transform=T_train)
+        val_dataset = H5ClassificationDataset(Path(val_data_path) / 'ToyBox/h5', split="test", transform=T_val)
     if data_fraction > 0:
         assert data_fraction < 1, "Only use data_fraction for values smaller than 1."
         data = train_dataset.samples
@@ -473,6 +515,5 @@ def prepare_data(
         val_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        # samplers=samplers
     )
     return train_loader, val_loader
