@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import lightning.pytorch as pl
 import torch
@@ -15,7 +15,6 @@ class KNNCallback(pl.Callback):
     def __init__(self, cfg: DictConfig, ):
         self.cfg = cfg
         self.train_loader, self.test_loader = None, None
-        self.knn = WeightedKNNClassifier(k=self.cfg.k[0], T=self.cfg.T, distance_fx=self.cfg.distance_fx)
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         T_train, T_val = prepare_transforms(self.cfg.dataset)
@@ -87,33 +86,38 @@ class KNNCallback(pl.Callback):
                     raise ValueError("Please use a logger that supports `log_metrics`")
 
     @torch.no_grad()
-    def extract_features(self, loader: DataLoader, model: pl.LightningModule, mode: str = "train") -> None:
+    def extract_features(self, loader: DataLoader, model: pl.LightningModule, mode: str = "train") -> Tuple[
+        torch.Tensor, torch.Tensor]:
         bar = tqdm(loader, desc=f'{mode} KNN',
                    total=len(loader)) if self.cfg.verbose and model.local_rank == 0 else loader
+
+        res_X, res_y = [], []
         for batch in bar:
             X, y = batch
             X = X.to(model.device, non_blocking=True)
             y = y.to(model.device, non_blocking=True)
 
             outs = model(X)
-            inputs = {f"{mode}_features": outs["feats"].detach(), f"{mode}_targets": y.detach()}
-            self.knn(**inputs)
+            res_X.append(outs["feats"].detach())
+            res_y.append(y.detach())
+        res_X = torch.cat(res_X)
+        res_y = torch.cat(res_y)
+        return res_X, res_y
 
     def run(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> Dict:
         # extract train and test features
-        self.extract_features(self.train_loader, pl_module, mode="train")
-        self.extract_features(self.test_loader, pl_module, mode="test")
+        X_train, y_train = self.extract_features(self.train_loader, pl_module, mode="train")
+        X_test, y_test = self.extract_features(self.test_loader, pl_module, mode="test")
 
         # barrier to make sure all features are extracted
         trainer.strategy.barrier()
 
         result = {}
         for k in self.cfg.k:
-            self.knn.set_k(k)
-            val_knn_acc1, val_knn_acc5 = self.knn.compute()
+            knn = WeightedKNNClassifier(k=k, T=self.cfg.T, distance_fx=self.cfg.distance_fx)
+            knn(X_train, y_train, X_test, y_test)
+            val_knn_acc1, val_knn_acc5 = knn.compute()
             result[k] = (val_knn_acc1, val_knn_acc5)
+            del knn
 
-        self.knn.set_k(self.cfg.k[0])
-
-        print("Result: ", result)
         return result
