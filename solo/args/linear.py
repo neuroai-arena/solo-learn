@@ -38,6 +38,7 @@ _N_CLASSES_PER_DATASET = {
     "STL10": 10,
     "Places365_h5": 365,
     "SUN397": 397,
+    "COIL100": 100
 }
 
 _SUPPORTED_DATASETS = [
@@ -62,7 +63,8 @@ _SUPPORTED_DATASETS = [
     'StanfordCars',
     "STL10",
     "Places365_h5",
-    "SUN397"
+    "SUN397",
+    "COIL100"
 ]
 
 

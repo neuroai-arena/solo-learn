@@ -133,6 +133,24 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
     }
 
+    coil100_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=128, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
+
     imagenet_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -216,6 +234,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         'Food101': imagenet_pipeline,
         'OxfordIIITPet': imagenet_pipeline,
         'Places365': imagenet_pipeline,
+        'COIL100': coil100_pipeline,
         'StanfordCars': imagenet_pipeline,
         "STL10": stl_pipeline,
         "Places365_h5": imagenet_pipeline,
@@ -272,7 +291,7 @@ def prepare_datasets(
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
         "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
-        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5", "SUN397"
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5", "SUN397","COIL100"
     ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
@@ -293,7 +312,7 @@ def prepare_datasets(
             transform=T_val,
         )
     elif dataset in ['DTD', 'Flowers102', 'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars',
-                     'STL10', 'SUN397']:
+                     'STL10']:
         DatasetClass = vars(torchvision.datasets)[dataset]
 
         if dataset == "StanfordCars" and download:
@@ -326,7 +345,7 @@ def prepare_datasets(
             download=download,
             transform=T_val,
         )
-    elif dataset in ["Places365_h5"]:
+    elif dataset in ["Places365_h5", "COIL100", "SUN397"]:
         train_dataset = H5ClassificationDataset(root=train_data_path, transform=T_train, split="train")
         val_dataset = H5ClassificationDataset(root=val_data_path, transform=T_val, split="val")
     elif dataset in ["tiny"]:
