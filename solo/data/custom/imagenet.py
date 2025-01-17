@@ -13,21 +13,30 @@ from torch.utils.data import Dataset
 from solo.data.custom.base import H5ClassificationDataset
 
 
+
 class ImgnetDataset(Dataset):
 
-    def __init__(self, data_root, split, transform, imgnet100=True):
+    def __init__(self, data_root, split, transform, imgnet100=True, percent=100):
         # super().__init__()
         self.mode = "train" if split == "train" else "val"
-        driver = "core" if self.mode == "train" and imgnet100 else None
-        self.hdf5_file = h5py.File(os.path.join(data_root, f'data2_{self.mode}.h5'), "r", driver=driver)
+        # driver = "core" if self.mode == "train" and (imgnet100 or percent != 100) else None
+        if self.mode == "val":
+            self.hdf5_file = h5py.File(os.path.join(data_root, f'data2_{self.mode}.h5'),"r", driver=None)
+        else:
+            self.hdf5_file = h5py.File(os.path.join(data_root, "..", f'train.h5'),"r", driver=None)
         self.dataset = pd.read_csv(os.path.join(data_root, f'dataset2_{self.mode}.csv'), header=None)
         self.dataset.columns.astype(str)
-        self.dataset.columns = ["index", "0", "1", "2", "label", "4"] if self.mode == "train" else ["0", "1", "2",
-                                                                                                    "label", "4"]
+        self.dataset.columns = ["index","0", "1", "2", "label", "4"] if self.mode == "train" else ["0", "1", "2", "label", "4"]
         self.transform = transform
         self.n_classes = 1000
-
         self.imgnet100 = imgnet100
+
+        if percent != 100:
+            id_to_num = json.load(open(os.path.join(data_root, "ids.json"), "r"))
+            id_list = open(os.path.join(data_root, f"{str(percent)}percent.txt"), "r")
+            num_list = [id_to_num[i] for i in id_list.read().splitlines()]
+            self.dataset = self.dataset.iloc[num_list].reset_index(drop=True)
+
         if imgnet100:
             self.n_classes = 100
             name_id_map = json.load(open(os.path.join(data_root, "imagenet_class_index.json"), "r"))
@@ -44,23 +53,24 @@ class ImgnetDataset(Dataset):
             self.dataset = self.dataset.query("label in @catfilter")
             self.dataset = self.dataset.reset_index(drop=True)
 
+
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        h5_index, label, begin = self.dataset.loc[idx, "0"], self.dataset.loc[idx, "label"], self.dataset.loc[idx, '4']
-
-        if self.imgnet100:
-            label = self.category_mapping[label]
-
+        h5_index, label, begin = self.dataset.loc[idx, "0"], self.dataset.loc[idx, "label"], self.dataset.loc[
+            idx, '4']
+        # img = Image.open("../datasets/imgnet/train/ILSVRC2012_val_00012562_n07697313.JPEG")
         if self.mode == "val":
             img = Image.open(io.BytesIO(self.hdf5_file.get(f"data2_{begin}")[h5_index]))
         else:
-            h5_index = h5_index % 50000
-            img = Image.open(io.BytesIO(self.hdf5_file.get(str(begin)).get("data")[h5_index]))
+            img = Image.open(io.BytesIO(self.hdf5_file.get("images")[h5_index]))
+            # h5_index = h5_index%50000
+            # img = Image.open(io.BytesIO(self.hdf5_file.get(str(begin)).get("data")[h5_index]))
+        if self.imgnet100:
+            label = self.category_mapping[label]
         x = self.transform(img)
         return x, label
-
 
 class ImgNetDataset_42(H5ClassificationDataset):
     def __init__(

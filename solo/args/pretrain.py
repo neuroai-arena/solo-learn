@@ -5,6 +5,7 @@ from omegaconf import OmegaConf, ListConfig
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import omegaconf_select
+from solo.args.linear import _SUPPORTED_DATASETS as _CLF_SUPPORTED_DATASETS
 
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule
@@ -72,6 +73,49 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     return cfg
 
 
+def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
+    """Adds specific default values/checks for KNN callback config.
+
+    Args:
+        cfg (omegaconf.DictConfig): DictConfig object.
+
+    Returns:
+        omegaconf.DictConfig: same as the argument, used to avoid errors.
+    """
+
+    assert not OmegaConf.is_missing(cfg, "knn_clb.dataset")
+    assert not OmegaConf.is_missing(cfg, "knn_clb.train_path")
+    assert not OmegaConf.is_missing(cfg, "knn_clb.val_path")
+    assert cfg.knn_clb.dataset in _CLF_SUPPORTED_DATASETS
+
+    cfg.knn_clb.format = omegaconf_select(cfg, "knn_clb.format", "image_folder")
+    cfg.knn_clb.batch_size = omegaconf_select(cfg, "knn_clb.batch_size", 32)
+    cfg.knn_clb.num_workers = omegaconf_select(cfg, "knn_clb.num_workers", 4)
+
+    k = omegaconf_select(cfg, "knn_clb.k", 20)
+    k = (k,) if isinstance(k, int) else k
+    cfg.knn_clb.k = k
+
+    cfg.knn_clb.T = omegaconf_select(cfg, "knn_clb.T", 0.07)
+    cfg.knn_clb.distance_fx = omegaconf_select(cfg, "knn_clb.distance_fx", "cosine")
+
+    cfg.knn_clb.perform_on_validation = omegaconf_select(cfg, "knn_clb.perform_on_validation", True)
+    cfg.knn_clb.perform_on_test = omegaconf_select(cfg, "knn_clb.perform_on_test", False)
+    cfg.knn_clb.delay_epochs = omegaconf_select(cfg, "knn_clb.delay_epochs", 0)
+    cfg.knn_clb.perform_every_n_batches = omegaconf_select(cfg, "knn_clb.perform_every_n_batches", None)
+
+    if cfg.knn_clb.perform_every_n_batches is not None:
+        assert isinstance(cfg.knn_clb.perform_every_n_batches,
+                          (int, float)), "perform_every_n_batches must be an int or float"
+        if isinstance(cfg.knn_clb.perform_every_n_batches, float):
+            assert cfg.knn_clb.perform_every_n_batches > 0, "perform_every_n_batches must be greater than 0"
+            assert cfg.knn_clb.perform_every_n_batches < 1, "perform_every_n_batches must be less than 1"
+
+    cfg.knn_clb.verbose = omegaconf_select(cfg, "knn_clb.verbose", False)
+
+    return cfg
+
+
 def add_and_assert_wandb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     """Adds specific default values/checks for wandb config.
 
@@ -116,6 +160,9 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     # default values for auto_resume
     cfg = AutoResumer.add_and_assert_specific_cfg(cfg)
+
+    # default values for knn_clb
+    cfg = add_and_assert_knn_clb_cfg(cfg)
 
     # default values for dali
     if _dali_available:

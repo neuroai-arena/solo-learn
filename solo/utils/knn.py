@@ -50,7 +50,7 @@ class WeightedKNNClassifier(Metric):
                 step. Defaults to False.
         """
 
-        super().__init__(dist_sync_on_step=dist_sync_on_step, compute_on_step=False)
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
 
         self.k = k
         self.T = T
@@ -62,6 +62,13 @@ class WeightedKNNClassifier(Metric):
         self.add_state("train_targets", default=[], persistent=False)
         self.add_state("test_features", default=[], persistent=False)
         self.add_state("test_targets", default=[], persistent=False)
+
+
+    def set_k(self, k: int):
+        self.k = k
+
+    def set_T(self, T: float):
+        self.T = T
 
     def update(
         self,
