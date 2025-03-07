@@ -124,5 +124,6 @@ class AutoResumer:
                     print("Found", candidate.checkpoint)
                     return candidate.checkpoint, wandb_run_id
 
-        raise FileNotFoundError("No valid checkpoint found.")
+        # raise FileNotFoundError("No valid checkpoint found.")
+        print("No valid checkpoint found.")
         return None, None

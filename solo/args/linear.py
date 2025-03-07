@@ -84,7 +84,8 @@ _SUPPORTED_DATASETS = [
     "COIL100",
     "STL10_224",
     "STL10_FG_224",
-    "STL10_FG"
+    "STL10_FG",
+    "tiny"
 ]
 
 
@@ -192,7 +193,9 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # backbone kwargs
     cfg.backbone.kwargs = omegaconf_select(cfg, "backbone.kwargs", {})
 
-    assert not omegaconf.OmegaConf.is_missing(cfg, "pretrained_feature_extractor")
+    cfg.pretrained_feature_extractor = omegaconf_select(cfg, "pretrained_feature_extractor", None)
+
+    # assert not omegaconf.OmegaConf.is_missing(cfg, "pretrained_feature_extractor")
 
     cfg.pretrain_method = omegaconf_select(cfg, "pretrain_method", None)
 

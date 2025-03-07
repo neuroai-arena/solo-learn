@@ -424,6 +424,7 @@ class LinearModel(pl.LightningModule):
         else:
             feats = X
 
+
         logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
@@ -495,7 +496,6 @@ class LinearModel(pl.LightningModule):
             self.backbone.eval()
 
         out = self.shared_step(batch, batch_idx, mode="train")
-
         self.log_dict(out, on_epoch=True, sync_dist=True)
         return out["train/loss"]
 
@@ -538,14 +538,14 @@ class LinearModel(pl.LightningModule):
 
         self.log_dict(log, sync_dist=True)
 
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        """Called when saving a checkpoint.
-
-        Args:
-            checkpoint (Dict[str, Any]): checkpoint to save.
-        """
-        # remove backbone from checkpoint
-        if not self.finetune:
-            for key in list(checkpoint["state_dict"].keys()):
-                if key.startswith("backbone"):
-                    del checkpoint["state_dict"][key]
+    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+    #     """Called when saving a checkpoint.
+    #
+    #     Args:
+    #         checkpoint (Dict[str, Any]): checkpoint to save.
+    #     """
+    #     # remove backbone from checkpoint
+    #     if not self.finetune:
+    #         for key in list(checkpoint["state_dict"].keys()):
+    #             if key.startswith("backbone"):
+    #                 del checkpoint["state_dict"][key]

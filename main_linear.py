@@ -77,20 +77,20 @@ def main(cfg: DictConfig):
 
     ckpt_path = cfg.pretrained_feature_extractor
 
-    assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
-
-    state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
-    for k in list(state.keys()):
-        if "encoder" in k:
-            state[k.replace("encoder", "backbone")] = state[k]
-            logging.warn(
-                "You are using an older checkpoint. Use a new one as some issues might arrise."
-            )
-        if "backbone" in k:
-            state[k.replace("backbone.", "")] = state[k]
-        del state[k]
-    backbone.load_state_dict(state, strict=False)
-    logging.info(f"Loaded {ckpt_path}")
+    # assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
+    if cfg.pretrained_feature_extractor is not None:
+        state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+        for k in list(state.keys()):
+            if "encoder" in k:
+                state[k.replace("encoder", "backbone")] = state[k]
+                logging.warn(
+                    "You are using an older checkpoint. Use a new one as some issues might arrise."
+                )
+            if "backbone" in k:
+                state[k.replace("backbone.", "")] = state[k]
+            del state[k]
+        backbone.load_state_dict(state, strict=False)
+        logging.info(f"Loaded {ckpt_path}")
 
     # check if mixup or cutmix is enabled
     mixup_func = None

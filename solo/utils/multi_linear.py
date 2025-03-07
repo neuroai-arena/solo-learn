@@ -78,6 +78,7 @@ def setup_linear_classifiers_only_lr(
     linear_classifiers_dict = nn.ModuleDict()
     optim_param_groups = []
     for _lr in learning_rates:
+
         lr = scale_lr(_lr, batch_size, devices)
 
         out_dim = sample_output.shape[-1]
@@ -101,6 +102,7 @@ def parameter_iterator(params: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
 
     keys = params.keys()
     values = params.values()
+
     return [dict(zip(keys, combination)) for combination in product(*values)]
 
 

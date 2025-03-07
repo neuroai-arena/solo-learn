@@ -36,7 +36,7 @@ optimizer:
 scheduler:
   name: "warmup_cosine"
   warmup_start_lr: 0.00001
-  warmup_epochs: 0.0
+  warmup_epochs: 0
   max_epochs: 100
   interval: "epoch"
 checkpoint:
