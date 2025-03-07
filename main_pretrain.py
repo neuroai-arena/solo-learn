@@ -20,6 +20,15 @@
 import inspect
 import os
 
+import warnings
+
+# Suppress the specific warning
+warnings.filterwarnings(
+    "ignore",
+    message=r"Overwriting .* in registry with .*\. This is because the name being registered conflicts with an existing name.*",
+    category=UserWarning
+)
+
 import hydra
 import torch
 from lightning.pytorch import Trainer, seed_everything
@@ -30,12 +39,11 @@ from omegaconf import DictConfig, OmegaConf
 
 from solo.args.pretrain import parse_cfg
 from solo.data.StatefulDistributeSampler import DataPrepIterCheck
-
 from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
-from solo.utils.misc import make_contiguous, omegaconf_select
 from solo.utils.knn_callback import KNNCallback
+from solo.utils.misc import make_contiguous, omegaconf_select
 
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule, build_transform_pipeline_dali
@@ -84,7 +92,8 @@ def main(cfg: DictConfig):
             checkpoint_dir=os.path.join(cfg.checkpoint.dir, cfg.method),
             max_hours=cfg.auto_resume.max_hours,
         )
-        resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg, step=cfg.auto_resume.step,
+        resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg,
+                                                                            step=cfg.auto_resume.step,
                                                                             epoch=cfg.auto_resume.epoch)
         if resume_from_checkpoint is not None:
             print(

@@ -22,6 +22,7 @@ from pathlib import Path
 import shutil
 from typing import Callable, Optional, Tuple, Union
 
+import torch
 import torchvision
 from timm.data import create_transform
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
@@ -30,7 +31,7 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
-from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42
+from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42, ImageNetS
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
 from solo.data.custom.tinyimgnet import TinyDataset
@@ -41,6 +42,20 @@ except ImportError:
     _h5_available = False
 else:
     _h5_available = True
+
+
+class FeatureDataset(Dataset):
+    def __init__(self, root: Union[str, Path]):
+        self.features = torch.load(str(root).format(type='feat'))
+        self.labels = torch.load(str(root).format(type='target'))
+
+        assert len(self.features) == len(self.labels), "Features and labels must have the same length."
+
+    def __len__(self) -> int:
+        return len(self.features)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.features[idx], self.labels[idx]
 
 
 def build_custom_pipeline():
@@ -115,6 +130,24 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
     }
 
+    stl_pipeline_224 = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
     stl_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -136,7 +169,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     imagenet_pipeline = {
         "T_train": transforms.Compose(
             [
-                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomResizedCrop(size=224, interpolation=transforms.InterpolationMode.BICUBIC),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
@@ -144,7 +177,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
         "T_val": transforms.Compose(
             [
-                transforms.Resize(256),  # resize shorter
+                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),  # resize shorter
                 transforms.CenterCrop(224),  # take center crop
                 transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
@@ -212,6 +245,23 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         )
     }
 
+    coil100_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=128, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
     custom_pipeline = build_custom_pipeline()
 
     pipelines = {
@@ -238,11 +288,16 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         'Places365': imagenet_pipeline,
         'StanfordCars': imagenet_pipeline,
         "STL10": stl_pipeline,
+        "STL10_224": stl_pipeline_224,
+        "STL10_FG_224": stl_pipeline_224,
+        "STL10_FG": stl_pipeline,
         "Places365_h5": imagenet_pipeline,
         "SUN397": imagenet_pipeline,
         "imagenet1pct_42": imagenet_pipeline,
         "imagenet10pct_42": imagenet_pipeline,
-        "toybox": toybox_pipeline
+        "toybox": toybox_pipeline,
+        "feat": imagenet_pipeline,  # this is a placeholder
+        'COIL100': coil100_pipeline,
     }
 
     assert dataset in pipelines
@@ -295,8 +350,9 @@ def prepare_datasets(
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
         "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
-        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "Places365_h5", "SUN397",
-        "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg'
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
+        "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
+        "STL10_FG"
     ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
@@ -317,7 +373,8 @@ def prepare_datasets(
             transform=T_val,
         )
     elif dataset in ['DTD', 'Flowers102', 'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars',
-                     'STL10', 'SUN397', 'Caltech101']:
+                     'STL10', 'SUN397', 'Caltech101', 'STL10_224']:
+        if dataset == "STL10_224": dataset = "STL10"
         DatasetClass = vars(torchvision.datasets)[dataset]
 
         if dataset == "StanfordCars" and download:
@@ -351,8 +408,17 @@ def prepare_datasets(
             transform=T_val,
         )
     elif dataset in ["Places365_h5"]:
-        train_dataset = H5ClassificationDataset(root=train_data_path, transform=T_train, split="train")
-        val_dataset = H5ClassificationDataset(root=val_data_path, transform=T_val, split="val")
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'Places365', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'Places365', transform=T_val, split="val")
+    elif dataset in ["COIL100"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'coil100', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'coil100', transform=T_val, split="val")
+    elif dataset in ["STL10_FG_224", "STL10_FG"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'STL10-FG', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'STL10-FG', transform=T_val, split="val")
     elif dataset in ["tiny"]:
         train_dataset = TinyDataset(train_data_path, "train", T_train)
         val_dataset = TinyDataset(val_data_path, "val", T_val)
@@ -398,6 +464,13 @@ def prepare_datasets(
     elif dataset == "toybox":
         train_dataset = H5ClassificationDataset(Path(train_data_path) / 'ToyBox/h5', split="train", transform=T_train)
         val_dataset = H5ClassificationDataset(Path(val_data_path) / 'ToyBox/h5', split="test", transform=T_val)
+    elif dataset == "feat":
+        train_dataset = FeatureDataset(train_data_path)
+        val_dataset = FeatureDataset(val_data_path)
+    elif dataset.startswith("imagenet_s"):
+        mode = ""
+        train_dataset = ImageNetS(Path(train_data_path) / 'ImageNet-S/ImageNetS919/training', transform=T_train, mode=mode)
+        val_dataset = ImageNetS(Path(val_data_path) / 'ImageNet-S/ImageNetS919/validation', transform=T_val, mode=mode)
     if data_fraction > 0:
         assert data_fraction < 1, "Only use data_fraction for values smaller than 1."
         data = train_dataset.samples

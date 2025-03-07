@@ -1,0 +1,5 @@
+enabled: True
+entity: "aaubret"
+project: "EgocentricVision"
+group: "mocov3-vit"
+job_type: "linear_probe+find_lr"

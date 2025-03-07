@@ -11,10 +11,7 @@ hydra:
     dir: .
 
 name: "linlast_mocov3nf_lr16_Core50"
-pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/iiiqnrs0/mocov3nf_lr16-iiiqnrs0-ep=last.ckpt"
-#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/q9y4x1nm/mocov3nf_lr16_center-q9y4x1nm-ep=last.ckpt"
-#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/mocov3nf_lr16_gs540resize-mv0pnuza-ep=last.ckpt"
-
+pretrained_feature_extractor : "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/linear/vz15k33k/linlast_mocov3nf_lr16_gs540_t0_fullIN-vz15k33k-ep=last.ckpt"
 
 backbone:
   name: "resnet50"
@@ -23,6 +20,8 @@ data:
   dataset: null
   train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
   val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+  train_backgrounds: [ 's1', 's2', 's3', 's4', 's5', 's6' ]
+  val_backgrounds: [ 's7', 's8', 's9', 's10', 's11' ]
   num_workers: 4
 optimizer:
   name: "lars"
@@ -45,17 +44,25 @@ auto_resume:
 early_stopping:
   enabled: True
   patience: 5
-  monitor: "val_acc1"
+  monitor: "val/acc1"
   mode: "max"
 
-pre_extract_feats: False
+grid:
+  enabled: False
+  lr: [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5]
+  avgpool: [True]
+  n_blocks: [1]
+
+use_pre_extract_feats: False
+skip_pre_extraction_of_feats: False
 finetune: False
 
 # overwrite PL stuff
 max_epochs: 100
-devices: 6
+devices: 8
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
 precision: 32
 log_every_n_steps: 50
+check_val_every_n_epoch: 1

@@ -1,16 +1,20 @@
 # Copyright 2023 solo-learn development team.
+
+
 import gc
 import logging
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import lightning.pytorch as pl
 import omegaconf
+from collections import defaultdict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from timm.models.vision_transformer import VisionTransformer
 
 from solo.utils.lars import LARS
 from solo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -20,6 +24,7 @@ from solo.utils.misc import (
     param_groups_layer_decay,
     remove_bias_and_norm_from_weight_decay,
 )
+from solo.utils.multi_linear import setup_linear_classifiers
 
 
 class FeatureDataset(Dataset):
@@ -41,8 +46,8 @@ def extract_features(loader: DataLoader, module: pl.LightningModule) -> Tuple[to
     features, labels = [], []
     bar = tqdm(loader, desc="Extracting features") if module.trainer.is_global_zero else loader
     for i, (image, target) in enumerate(bar):
-        image = image.cuda(non_blocking=True, memory_format=torch.channels_last)
-        outs = module.backbone(image)
+        image = image.to(module.device, non_blocking=True, memory_format=torch.channels_last)
+        outs = module.forward_backbone(image)
 
         features.append(outs)
         labels.append(target)
@@ -51,7 +56,6 @@ def extract_features(loader: DataLoader, module: pl.LightningModule) -> Tuple[to
 
     features = module.all_gather(features).view(-1, features.shape[-1])
     labels = module.all_gather(labels).view(-1)
-    # print("RANK", module.trainer.local_rank, ":", features.shape, labels.shape)
 
     module.train()
     return features, labels
@@ -126,12 +130,35 @@ class LinearModel(pl.LightningModule):
         # backbone
         self.backbone = backbone
         if hasattr(self.backbone, "inplanes"):
-            features_dim = self.backbone.inplanes
+            self.features_dim = self.backbone.inplanes
         else:
-            features_dim = self.backbone.num_features
+            self.features_dim = self.backbone.num_features
 
-        # classifier
-        self.classifier = nn.Linear(features_dim, cfg.data.num_classes)  # type: ignore
+        self.is_transformer = isinstance(self.backbone, VisionTransformer)
+
+        if self.cfg.grid.enabled:
+            sample_output = self.forward_backbone(torch.randn(2, 3, 224, 224))
+            print("Sample output shape", sample_output.shape)
+
+            self.classifier, self.optim_param_groups = setup_linear_classifiers(
+                sample_output=sample_output,
+                learning_rates=self.cfg.grid.lr,
+                has_class_token=getattr(self.backbone, "has_class_token", True),
+                batch_size=self.cfg.optimizer.batch_size,
+                devices=self.cfg.devices,
+                num_classes=self.cfg.data.num_classes,
+                is_transformer=self.is_transformer,
+
+                use_avgpool=self.cfg.grid.use_avgpool,
+                use_cls_token=self.cfg.grid.use_cls_token,
+                use_n_blocks=self.cfg.grid.use_n_blocks,
+            )
+        else:
+            self.classifier = nn.Linear(self.features_dim, cfg.data.num_classes)
+            self.classifier.weight.data.normal_(mean=0.0, std=0.01)
+            self.classifier.bias.data.zero_()
+
+            self.optim_param_groups = [{"name": "classifier", "params": self.classifier.parameters()}]
 
         # mixup/cutmix function
         self.mixup_func: Callable = mixup_func
@@ -171,7 +198,7 @@ class LinearModel(pl.LightningModule):
         self.finetune: bool = cfg.finetune
 
         # if pre-extracting features
-        self.pre_extract_feats: bool = cfg.pre_extract_feats
+        self.use_pre_extract_feats: bool = cfg.use_pre_extract_feats
 
         # for performance
         self.no_channel_last = cfg.performance.disable_channel_last
@@ -182,7 +209,7 @@ class LinearModel(pl.LightningModule):
 
         # keep track of validation metrics
         self.validation_step_outputs = []
-        self.max_val_acc_top1 = torch.tensor(0.0)
+        self.max_val_acc_top1 = defaultdict(lambda: torch.tensor(0.0))
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -205,9 +232,13 @@ class LinearModel(pl.LightningModule):
 
         # whether or not to finetune the backbone
         cfg.finetune = omegaconf_select(cfg, "finetune", False)
-        cfg.pre_extract_feats = omegaconf_select(cfg, "pre_extract_feats", False)
+        cfg.use_pre_extract_feats = omegaconf_select(cfg, "use_pre_extract_feats", False)
+        cfg.skip_pre_extraction_of_feats = omegaconf_select(cfg, "skip_pre_extraction_of_feats", False)
 
-        if cfg.pre_extract_feats and cfg.finetune:
+        if not cfg.use_pre_extract_feats and cfg.skip_pre_extraction_of_feats:
+            raise ValueError("Cannot skip pre-extraction of features without pre-extracting them.")
+
+        if cfg.use_pre_extract_feats and cfg.finetune:
             raise ValueError("Cannot pre-extract features and finetune the backbone at the same time.")
 
         # default for acc grad batches
@@ -226,6 +257,14 @@ class LinearModel(pl.LightningModule):
             cfg, "performance.disable_channel_last", False
         )
 
+        cfg.grid.enabled = omegaconf_select(cfg, "grid.enabled", False)
+        cfg.grid.lr = omegaconf_select(cfg, "grid.lr",
+                                       [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3,
+                                        0.5])
+        cfg.grid.use_avgpool = omegaconf_select(cfg, "grid.use_avgpool", None)
+        cfg.grid.use_cls_token = omegaconf_select(cfg, "grid.use_cls_token", None)
+        cfg.grid.use_n_blocks = omegaconf_select(cfg, "grid.use_n_blocks", None)
+
         return cfg
 
     def configure_optimizers(self) -> Tuple[List, List]:
@@ -234,7 +273,7 @@ class LinearModel(pl.LightningModule):
         Returns:
             Tuple[List, List]: two lists containing the optimizer and the scheduler.
         """
-
+        print("Configuring optimizers")
         if self.layer_decay > 0:
             assert self.finetune, "Only with use layer weight decay with finetune on."
             msg = (
@@ -249,16 +288,15 @@ class LinearModel(pl.LightningModule):
                 no_weight_decay_list=self.backbone.no_weight_decay(),
                 layer_decay=self.layer_decay,
             )
-            learnable_params.append({"name": "classifier", "params": self.classifier.parameters()})
+            learnable_params.extend(self.optim_param_groups)
         else:
-            learnable_params = (
-                self.classifier.parameters()
-                if not self.finetune
-                else [
+            if self.finetune:
+                learnable_params = [
                     {"name": "backbone", "params": self.backbone.parameters()},
-                    {"name": "classifier", "params": self.classifier.parameters()},
+                    *self.optim_param_groups,
                 ]
-            )
+            else:
+                learnable_params = self.optim_param_groups
 
         # exclude bias and norm from weight decay
         if self.exclude_bias_n_norm_wd:
@@ -314,14 +352,12 @@ class LinearModel(pl.LightningModule):
         return [optimizer], [scheduler]
 
     def on_train_start(self) -> None:
-        if self.pre_extract_feats:
+        if self.use_pre_extract_feats and not self.cfg.skip_pre_extraction_of_feats:
             print("Extracting train features", self.trainer.local_rank)
             train_feat, train_lab = extract_features(self.trainer.train_dataloader, self)
-            # print(f"RANK {self.trainer.local_rank}: {train_feat.shape=} {train_lab.shape=}")
 
             print("Extracting val features", self.trainer.local_rank)
             val_feat, val_lab = extract_features(self.trainer.val_dataloaders, self)
-            # print(f"RANK {self.trainer.local_rank}: {val_feat.shape=} {val_lab.shape=}")
 
             self.backbone.cpu()
             torch.cuda.empty_cache()
@@ -345,10 +381,28 @@ class LinearModel(pl.LightningModule):
             self.trainer.fit_loop.reset()
             self.trainer.fit_loop.epoch_loop.val_loop.setup_data()
 
-            # print(f"RANK {self.trainer.local_rank}: {self.trainer.train_dataloader.dataset}")
-            # print(f"RANK {self.trainer.local_rank}: {self.trainer.train_dataloader.sampler}")
-            # print(f"RANK {self.trainer.local_rank}: Done")
             self.trainer.strategy.barrier()
+
+    def forward_backbone(self, X: torch.Tensor) -> torch.Tensor:
+        special_search = any([x is not None for x in
+                              [self.cfg.grid.use_avgpool, self.cfg.grid.use_cls_token, self.cfg.grid.use_n_blocks]])
+        if self.is_transformer and self.cfg.grid.enabled and special_search:
+            out = self.backbone.get_intermediate_layers(
+                X,
+                n=max(self.cfg.grid.use_n_blocks),
+                return_prefix_tokens=True,
+                norm=False,
+            )
+            out = torch.stack(
+                [torch.cat(
+                    [
+                        prefix,  # batch, num_prefix, dim
+                        torch.mean(patch, dim=1).unsqueeze(1)  # batch, num_patch, dim -> batch, 1, dim
+                    ],
+                    dim=1) for patch, prefix in out],
+                dim=1)  # (batch, layer, num_prefix + 1, dim)
+            return out
+        return self.backbone(X)
 
     def forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Performs forward pass of the frozen backbone and the linear layer for evaluation.
@@ -360,20 +414,22 @@ class LinearModel(pl.LightningModule):
             Dict[str, Any]: a dict containing features and logits.
         """
 
-        if not self.no_channel_last and not self.pre_extract_feats:
+        if not self.no_channel_last and not self.use_pre_extract_feats:
             X = X.to(memory_format=torch.channels_last)
 
-        if not self.pre_extract_feats or self.trainer.sanity_checking:
+        if not self.use_pre_extract_feats or (
+                self.trainer.sanity_checking and not self.cfg.skip_pre_extraction_of_feats):
             with torch.set_grad_enabled(self.finetune):
-                feats = self.backbone(X)
+                feats = self.forward_backbone(X)
         else:
             feats = X
+
         logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
     def shared_step(
-            self, batch: Tuple, batch_idx: int
-    ) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
+            self, batch: Tuple, batch_idx: int, mode: str = "train",
+    ) -> Dict[str, Any]:
         """Performs operations that are shared between the training nd validation steps.
 
         Args:
@@ -381,7 +437,7 @@ class LinearModel(pl.LightningModule):
             batch_idx (int): the index of the batch.
 
         Returns:
-            Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
+            Dict[str, Any]: a dict containing
                 batch size, loss, accuracy @1 and accuracy @5.
         """
 
@@ -392,13 +448,34 @@ class LinearModel(pl.LightningModule):
         if self.training and self.mixup_func is not None:
             X, target = self.mixup_func(X, target)
             out = self(X)["logits"]
-            loss = self.loss_func(out, target)
-            metrics.update({"loss": loss})
+            if isinstance(out, dict):
+                total_loss = 0
+                for classifier, logits in out.items():
+                    loss = self.loss_func(logits, target)
+                    total_loss += loss
+                    metrics.update({f"{mode}/{classifier}_loss": loss})
+                metrics.update({f"{mode}/loss": total_loss})
+            else:
+                loss = self.loss_func(out, target)
+                metrics.update({f"{mode}/loss": loss})
         else:
             out = self(X)["logits"]
-            loss = F.cross_entropy(out, target)
-            acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
-            metrics.update({"loss": loss, "acc1": acc1, "acc5": acc5})
+
+            if isinstance(out, dict):
+                total_loss = 0
+                for classifier, logits in out.items():
+                    loss = F.cross_entropy(logits, target)
+                    total_loss += loss
+
+                    acc1, acc5 = accuracy_at_k(logits, target, top_k=(1, 5))
+                    metrics.update({f"{mode}/{classifier}_loss": loss,
+                                    f"{mode}/{classifier}_acc1": acc1,
+                                    f"{mode}/{classifier}_acc5": acc5})
+                metrics.update({f"{mode}/loss": total_loss})
+            else:
+                loss = F.cross_entropy(out, target)
+                acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
+                metrics.update({f"{mode}/loss": loss, f"{mode}/acc1": acc1, f"{mode}/acc5": acc5})
 
         return metrics
 
@@ -417,14 +494,10 @@ class LinearModel(pl.LightningModule):
         if not self.finetune:
             self.backbone.eval()
 
-        out = self.shared_step(batch, batch_idx)
+        out = self.shared_step(batch, batch_idx, mode="train")
 
-        log = {"train_loss": out["loss"]}
-        if self.mixup_func is None:
-            log.update({"train_acc1": out["acc1"], "train_acc5": out["acc5"]})
-
-        self.log_dict(log, on_epoch=True, sync_dist=True)
-        return out["loss"]
+        self.log_dict(out, on_epoch=True, sync_dist=True)
+        return out["train/loss"]
 
     def validation_step(self, batch: torch.Tensor, batch_idx: int) -> Dict[str, Any]:
         """Performs the validation step for the linear eval.
@@ -439,14 +512,7 @@ class LinearModel(pl.LightningModule):
                 the classification loss and accuracies.
         """
 
-        out = self.shared_step(batch, batch_idx)
-
-        metrics = {
-            "batch_size": out["batch_size"],
-            "val_loss": out["loss"],
-            "val_acc1": out["acc1"],
-            "val_acc5": out["acc5"],
-        }
+        metrics = self.shared_step(batch, batch_idx, mode="val")
         self.validation_step_outputs.append(metrics)
         return metrics
 
@@ -455,27 +521,31 @@ class LinearModel(pl.LightningModule):
         This is needed because the last batch can be smaller than the others,
         slightly skewing the metrics.
         """
+        all_metrics = set(self.validation_step_outputs[0].keys()) - set(["batch_size"])
 
-        val_loss = weighted_mean(self.validation_step_outputs, "val_loss", "batch_size")
-        val_acc1 = weighted_mean(self.validation_step_outputs, "val_acc1", "batch_size")
-        val_acc5 = weighted_mean(self.validation_step_outputs, "val_acc5", "batch_size")
+        log = {}
+        for metric in all_metrics:
+            log[metric] = weighted_mean(self.validation_step_outputs, metric, "batch_size")
+
         self.validation_step_outputs.clear()
 
-        log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
-
-        self.max_val_acc_top1 = torch.max(self.max_val_acc_top1, torch.tensor(val_acc1))
-        self.log("max_val_acc_top1", self.max_val_acc_top1, sync_dist=True)
+        for acc1_key in filter(lambda x: "acc1" in x, all_metrics):
+            # gather all accuracies and average them
+            val_acc1_all = self.all_gather(log[acc1_key])
+            val_acc1_all = torch.mean(val_acc1_all)
+            self.max_val_acc_top1[acc1_key] = torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all)
+            self.log(f"max/{acc1_key}", self.max_val_acc_top1[acc1_key], sync_dist=True)
 
         self.log_dict(log, sync_dist=True)
 
-    # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-    #     """Called when saving a checkpoint.
-    #
-    #     Args:
-    #         checkpoint (Dict[str, Any]): checkpoint to save.
-    #     """
-    #     # remove backbone from checkpoint
-    #     if not self.finetune:
-    #         for key in list(checkpoint["state_dict"].keys()):
-    #             if key.startswith("backbone"):
-    #                 del checkpoint["state_dict"][key]
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        """Called when saving a checkpoint.
+
+        Args:
+            checkpoint (Dict[str, Any]): checkpoint to save.
+        """
+        # remove backbone from checkpoint
+        if not self.finetune:
+            for key in list(checkpoint["state_dict"].keys()):
+                if key.startswith("backbone"):
+                    del checkpoint["state_dict"][key]

@@ -16,12 +16,17 @@
 # FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
+import warnings
 
+# Suppress the specific warning
+warnings.filterwarnings(
+    "ignore",
+    message=r"Overwriting .* in registry with .*\. This is because the name being registered conflicts with an existing name.*",
+    category=UserWarning
+)
 import inspect
 import logging
 import os
-import re
-import warnings
 
 import hydra
 import torch
@@ -41,8 +46,6 @@ from solo.methods.linear import LinearModel
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous
-
-warnings.filterwarnings("ignore", category=UserWarning)
 
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
@@ -163,7 +166,7 @@ def main(cfg: DictConfig):
             max_hours=cfg.auto_resume.max_hours,
         )
         resume_from_checkpoint, wandb_run_id = auto_resumer.find_checkpoint(cfg)
-        print(cfg.auto_resume.enabled, cfg.resume_from_checkpoint,cfg.auto_resume.max_hours, resume_from_checkpoint)
+        print(cfg.auto_resume.enabled, cfg.resume_from_checkpoint, cfg.auto_resume.max_hours, resume_from_checkpoint)
 
         if resume_from_checkpoint is not None:
             print(
@@ -208,12 +211,11 @@ def main(cfg: DictConfig):
         # wandb_logger.watch(model, log="gradients", log_freq=100)
         wandb_logger.log_hyperparams(OmegaConf.to_container(cfg))
 
-        # lr logging
-        lr_monitor = LearningRateMonitor(logging_interval="step")
-        callbacks.append(lr_monitor)
+    # lr logging
+    lr_monitor = LearningRateMonitor(logging_interval="step")
+    callbacks.append(lr_monitor)
 
     callbacks.append(ModelSummary(max_depth=1))
-
 
     trainer_kwargs = OmegaConf.to_container(cfg)
     # we only want to pass in valid Trainer args, the rest may be user specific
@@ -229,21 +231,6 @@ def main(cfg: DictConfig):
             else cfg.strategy,
         }
     )
-
-    # if resume_from_checkpoint is not None:
-    #     m2 = torch.load(ckpt_path)
-    #     print(m2.keys())
-    #     # m2 = m2["state_dict"]
-    #     state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
-    #     new_state_dict = {}
-    #     for k, w in state_dict.items():
-    #         if re.search("^backbone.*", k):
-    #             k = ".".join(k.split(".")[1:])
-    #             new_state_dict[k] = w
-    #
-    #     m2["backbone"] = new_state_dict
-    #     ckpt_path = str(ckpt_path)[:-5]+"v2.ckpt"
-    #     torch.save(m2, ckpt_path)
 
     trainer = Trainer(**trainer_kwargs)
     if cfg.data.format == "dali":

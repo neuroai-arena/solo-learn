@@ -1,0 +1,61 @@
+defaults:
+  - _self_
+  - wandb: ts_aubret.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "linlast_mocov3nf_lr16_Core50"
+pretrained_feature_extractor : "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/linear/vz15k33k/linlast_mocov3nf_lr16_gs540_t0_fullIN-vz15k33k-ep=last.ckpt"
+
+backbone:
+  name: "resnet50"
+method: "mocov3"
+data:
+  dataset: null
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+  val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+  train_backgrounds: [ 's1', 's2', 's3', 's4', 's5', 's6' ]
+  val_backgrounds: [ 's7', 's8', 's9', 's10', 's11' ]
+  num_workers: 4
+optimizer:
+  name: "lars"
+  batch_size: 64
+  lr: 0.3
+  weight_decay: 0
+scheduler:
+  name: "warmup_cosine"
+  warmup_start_lr: 0.00001
+  warmup_epochs: 0.0
+  max_epochs: 100
+  interval: "epoch"
+checkpoint:
+  enabled: False
+  dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
+  frequency: 1
+  save_last: True
+auto_resume:
+  enabled: False
+early_stopping:
+  enabled: True
+  patience: 5
+  monitor: "val_acc1"
+  mode: "max"
+
+pre_extract_feats: False
+finetune: False
+
+# overwrite PL stuff
+max_epochs: 100
+devices: 6
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 32
+log_every_n_steps: 50
+check_val_every_n_epoch: 1
