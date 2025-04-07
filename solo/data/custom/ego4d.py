@@ -29,8 +29,8 @@ class Ego4d(Dataset):
         self.resize_gs = resize_gs
         self.foveation = foveation
 
-        self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95v2.h5"), "r")
-        self.dataset = h5py.File(os.path.join(self.data_root, f"dataset_all95v2.h5"), "r")["data"]
+        self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95.h5"), "r")
+        self.dataset = h5py.File(os.path.join(self.data_root, f"dataset_all95.h5"), "r")["data"]
 
         b= np.ones((self.dataset.shape[0],), dtype=bool)
         for c in self.corrupted:
