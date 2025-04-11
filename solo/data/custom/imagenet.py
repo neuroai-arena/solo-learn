@@ -3,31 +3,41 @@ import json
 import os
 from pathlib import Path
 from typing import Union, Callable, Optional, Tuple
-
+import cv2
 import h5py
 import numpy as np
 import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision.datasets import ImageFolder
 
 from solo.data.custom.base import H5ClassificationDataset
 
 
+
 class ImgnetDataset(Dataset):
 
-    def __init__(self, data_root, split, transform, imgnet100=True):
+    def __init__(self, data_root, split, transform, imgnet100=True, percent=100):
         # super().__init__()
         self.mode = "train" if split == "train" else "val"
-        driver = "core" if self.mode == "train" and imgnet100 else None
-        self.hdf5_file = h5py.File(os.path.join(data_root, f'data2_{self.mode}.h5'), "r", driver=driver)
+        # driver = "core" if self.mode == "train" and (imgnet100 or percent != 100) else None
+        if self.mode == "val":
+            self.hdf5_file = h5py.File(os.path.join(data_root, f'data2_{self.mode}.h5'),"r", driver=None)
+        else:
+            self.hdf5_file = h5py.File(os.path.join(data_root, "..", f'train.h5'),"r", driver=None)
         self.dataset = pd.read_csv(os.path.join(data_root, f'dataset2_{self.mode}.csv'), header=None)
         self.dataset.columns.astype(str)
-        self.dataset.columns = ["index", "0", "1", "2", "label", "4"] if self.mode == "train" else ["0", "1", "2",
-                                                                                                    "label", "4"]
+        self.dataset.columns = ["index","0", "1", "2", "label", "4"] if self.mode == "train" else ["0", "1", "2", "label", "4"]
         self.transform = transform
         self.n_classes = 1000
-
         self.imgnet100 = imgnet100
+
+        if percent != 100:
+            id_to_num = json.load(open(os.path.join(data_root, "ids.json"), "r"))
+            id_list = open(os.path.join(data_root, f"{str(percent)}percent.txt"), "r")
+            num_list = [id_to_num[i] for i in id_list.read().splitlines()]
+            self.dataset = self.dataset.iloc[num_list].reset_index(drop=True)
+
         if imgnet100:
             self.n_classes = 100
             name_id_map = json.load(open(os.path.join(data_root, "imagenet_class_index.json"), "r"))
@@ -44,23 +54,24 @@ class ImgnetDataset(Dataset):
             self.dataset = self.dataset.query("label in @catfilter")
             self.dataset = self.dataset.reset_index(drop=True)
 
+
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        h5_index, label, begin = self.dataset.loc[idx, "0"], self.dataset.loc[idx, "label"], self.dataset.loc[idx, '4']
-
-        if self.imgnet100:
-            label = self.category_mapping[label]
-
+        h5_index, label, begin = self.dataset.loc[idx, "0"], self.dataset.loc[idx, "label"], self.dataset.loc[
+            idx, '4']
+        # img = Image.open("../datasets/imgnet/train/ILSVRC2012_val_00012562_n07697313.JPEG")
         if self.mode == "val":
             img = Image.open(io.BytesIO(self.hdf5_file.get(f"data2_{begin}")[h5_index]))
         else:
-            h5_index = h5_index % 50000
-            img = Image.open(io.BytesIO(self.hdf5_file.get(str(begin)).get("data")[h5_index]))
+            img = Image.open(io.BytesIO(self.hdf5_file.get("images")[h5_index]))
+            # h5_index = h5_index%50000
+            # img = Image.open(io.BytesIO(self.hdf5_file.get(str(begin)).get("data")[h5_index]))
+        if self.imgnet100:
+            label = self.category_mapping[label]
         x = self.transform(img)
         return x, label
-
 
 class ImgNetDataset_42(H5ClassificationDataset):
     def __init__(
@@ -68,10 +79,18 @@ class ImgNetDataset_42(H5ClassificationDataset):
             root: Union[str, Path],
             transform: Optional[Callable] = None,
             split: str = "train",
-            imgnet100: bool = False
+            subset: Optional[str] = None
     ):
-        super().__init__(root, transform, split, driver="core" if split == "train" and imgnet100 else None)
-        if imgnet100:
+        super().__init__(root, transform, split, driver="core" if split == "train" and subset is not None else None)
+        if subset == '1pct' and split == "train":
+            subset_df = pd.read_csv("solo/data/dataset_subset/imagenet_1percent.txt", names=['filename'])
+            self.mapper = self.mapper.query("filename.isin(@subset_df.filename)").copy().reset_index(drop=True)
+            print("Using IN 1%")
+        elif subset == '10pct' and split == "train":
+            subset_df = pd.read_csv("solo/data/dataset_subset/imagenet_10percent.txt", names=['filename'])
+            self.mapper = self.mapper.query("filename.isin(@subset_df.filename)").copy().reset_index(drop=True)
+            print("Using IN 10%")
+        elif subset == "imgnet100":
             with open(self.root / 'imagenet100_classes.txt') as f:
                 imgnet100_classes = sorted(f.readline().strip().split())
             imgnet100_class_wn_2_class_index = {class_wn: class_index for class_index, class_wn in
@@ -134,3 +153,37 @@ class ImageNetOODDataset(Dataset):
             targets = version.get("targets")[idx]
 
         return image, targets
+
+
+class ImageNetS(ImageFolder):
+    def __init__(self, root, transform=None, mode: str = 'full'):
+        super().__init__(root, transform)
+        mask_p = root + '-segmentation/'
+        self.masks = [Path(mask_p + '/'.join(x[0].split('/')[-2:])).with_suffix('.png') for x in self.samples]
+        self.mode = mode
+        if self.mode not in ['full', 'fg', 'bg', 'bg_rec']:
+            raise ValueError(f"Mode {self.mode} not available, choose one of ['full', 'fg', 'bg', 'bg_rec']")
+
+    def __getitem__(self, index: int):
+        path, target = self.samples[index]
+
+        sample = self.loader(path)
+        if self.mode == "fg":
+            mask = np.array(Image.open(self.masks[index]))[..., 0] > 0
+            sample = Image.fromarray(np.array(sample) * mask[..., None])
+        elif self.mode == "bg":
+            mask = 1 - (np.array(Image.open(self.masks[index]))[..., 0] > 0).astype(np.uint8)
+            sample = Image.fromarray(np.array(sample) * mask[..., None])
+        elif self.mode == 'bg_rec':
+            mask = np.array(Image.open(self.masks[index]))[..., 0]
+            bbox = cv2.boundingRect(mask)
+            mask = np.ones_like(mask)
+            mask[bbox[1]:bbox[1] + bbox[3], bbox[0]:bbox[0] + bbox[2]] = 0
+            sample = Image.fromarray(np.array(sample) * mask[..., None])
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return sample, target

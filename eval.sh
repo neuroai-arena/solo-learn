@@ -1,0 +1,1 @@
+#python main_linear.py --config-path scripts/linear_probe/ --config-name moco_imagenet100.yaml ++name=linlast_mocov3nf_lr16_gs448 ++pretrained_feature_extractor="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/mocov3nf_lr16_gs448-i477bc9q-ep\=last.ckpt"

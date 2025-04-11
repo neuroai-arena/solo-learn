@@ -26,6 +26,11 @@ class AutoResumer:
         "wandb.project",
         "wandb.entity",
         "pretrained_feature_extractor",
+        "method_kwargs.temperature",
+        "data.dataset_kwargs.gaze_size",
+        "data.dataset_kwargs.time_window",
+        "data.dataset_kwargs.center_crop",
+        "data.dataset_kwargs.resize_gs",
     ]
 
     def __init__(
@@ -43,7 +48,10 @@ class AutoResumer:
         """
 
         self.checkpoint_dir = checkpoint_dir
-        self.max_hours = timedelta(hours=max_hours)
+        if max_hours == -1 or max_hours is None:
+            self.max_hours = timedelta.max
+        else:
+            self.max_hours = timedelta(hours=max_hours)
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: DictConfig) -> DictConfig:
@@ -95,6 +103,7 @@ class AutoResumer:
                 if not Path(candidate.args).exists():
                     continue
                 candidate_cfg = DictConfig(json.load(open(candidate.args)))
+
                 if all(
                     omegaconf_select(candidate_cfg, param, None)
                     == omegaconf_select(cfg, param, None)
@@ -115,4 +124,6 @@ class AutoResumer:
                     print("Found", candidate.checkpoint)
                     return candidate.checkpoint, wandb_run_id
 
+        # raise FileNotFoundError("No valid checkpoint found.")
+        print("No valid checkpoint found.")
         return None, None

@@ -49,8 +49,6 @@ class DataPrepIterCheck(pl.LightningDataModule):
         )
 
 
-
-
     def val_dataloader(self):
         if self.cfg.data.dataset == "custom" and (self.cfg.data.no_labels or self.cfg.data.val_path is None):
             val_loader = None
@@ -91,9 +89,6 @@ class DataPrepIterCheck(pl.LightningDataModule):
             self.train_dataloader().sampler.set_start_iter(state_dict["steps"])
         except:
             print("cant load")
-
-
-
 
     # def load_from_checkpoint(
     #     cls,

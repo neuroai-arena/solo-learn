@@ -112,10 +112,10 @@ class Checkpointer(Callback):
 
         if version is not None:
             self.path = self.logdir / version
-            self.ckpt_placeholder = f"{self.cfg.name}-{version}" + "-ep={}.ckpt"
+            self.ckpt_placeholder = f"{self.cfg.name}-{version}" + "-ep={epoch}-stp={step}.ckpt"
         else:
             self.path = self.logdir
-            self.ckpt_placeholder = f"{self.cfg.name}" + "-ep={}.ckpt"
+            self.ckpt_placeholder = f"{self.cfg.name}" + "-ep={epoch}-stp={step}.ckpt"
         self.last_ckpt: Optional[str] = None
 
         # create logging dirs
@@ -144,7 +144,7 @@ class Checkpointer(Callback):
 
         if not trainer.sanity_checking:
             epoch = trainer.current_epoch  # type: ignore
-            ckpt = self.path / self.ckpt_placeholder.format(epoch)
+            ckpt = self.path / self.ckpt_placeholder.format(epoch=epoch, step=trainer.global_step)
             trainer.save_checkpoint(ckpt)
 
             if (
@@ -188,7 +188,7 @@ class Checkpointer(Callback):
 
         if not trainer.sanity_checking:
             epoch = trainer.current_epoch  # type: ignore
-            ckpt = self.path / self.ckpt_placeholder.format(epoch+batch_idx)
+            ckpt = self.path / self.ckpt_placeholder.format(epoch=epoch, step=batch_idx)
             trainer.save_checkpoint(ckpt)
 
             if (
@@ -222,5 +222,5 @@ class Checkpointer(Callback):
         if self.save_last:
             print("Saving last checkpoint")
             if not trainer.sanity_checking:
-                ckpt = self.path / self.ckpt_placeholder.format('last')
+                ckpt = self.path / self.ckpt_placeholder.format(epoch='last', step='last')
                 trainer.save_checkpoint(ckpt)

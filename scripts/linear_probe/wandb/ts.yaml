@@ -1,0 +1,5 @@
+enabled: True
+entity: None
+project: "EgocentricVision"
+group: 'dino-vit'
+job_type: 'linear_probe'

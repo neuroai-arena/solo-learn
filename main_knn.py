@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 from typing import Tuple
 
+import pandas as pd
 import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
@@ -66,15 +67,17 @@ def extract_features(loader: DataLoader, model: nn.Module) -> Tuple[torch.Tensor
     return backbone_features, proj_features, labels
 
 
+
+
 @torch.no_grad()
 def run_knn(
-    train_features: torch.Tensor,
-    train_targets: torch.Tensor,
-    test_features: torch.Tensor,
-    test_targets: torch.Tensor,
-    k: int,
-    T: float,
-    distance_fx: str,
+        train_features: torch.Tensor,
+        train_targets: torch.Tensor,
+        test_features: torch.Tensor,
+        test_targets: torch.Tensor,
+        k: int,
+        T: float,
+        distance_fx: str,
 ) -> Tuple[float]:
     """Runs offline knn on a train and a test dataset.
 
@@ -122,7 +125,16 @@ def main():
     # build paths
     ckpt_dir = Path(args.pretrained_checkpoint_dir)
     args_path = ckpt_dir / "args.json"
-    ckpt_path = [ckpt_dir / ckpt for ckpt in os.listdir(ckpt_dir) if ckpt.endswith(".ckpt")][0]
+    ckpt_path = sorted([ckpt_dir / ckpt for ckpt in os.listdir(ckpt_dir) if ckpt.endswith(".ckpt")])
+
+    # try to get last checkpoint
+    last = list(filter(lambda x: "ep=last" in str(x), ckpt_path))
+    if last:
+        ckpt_path = last[0]
+    else:
+        ckpt_path = ckpt_path[-1]
+
+    print("Using checkpoint", ckpt_path)
 
     # load arguments
     with open(args_path) as f:
@@ -158,15 +170,13 @@ def main():
     test_features_bb, test_features_proj, test_targets = extract_features(val_loader, model)
     test_features = {"backbone": test_features_bb, "projector": test_features_proj}
 
+    result = []
     # run k-nn for all possible combinations of parameters
     for feat_type in args.feature_type:
-        print(f"\n### {feat_type.upper()} ###")
         for k in args.k:
             for distance_fx in args.distance_function:
                 temperatures = args.temperature if distance_fx == "cosine" else [None]
                 for T in temperatures:
-                    print("---")
-                    print(f"Running k-NN with params: distance_fx={distance_fx}, k={k}, T={T}...")
                     acc1, acc5 = run_knn(
                         train_features=train_features[feat_type],
                         train_targets=train_targets,
@@ -176,7 +186,11 @@ def main():
                         T=T,
                         distance_fx=distance_fx,
                     )
-                    print(f"Result: acc@1={acc1}, acc@5={acc5}")
+                    result.append({"feat_type": feat_type, "distance_fx": distance_fx, "k": k, "T": T, "acc1": acc1,
+                                   "acc5": acc5})
+    result = pd.DataFrame(result)
+    print(result)
+    result.to_csv(f"res/knn/knn_{ckpt_dir.stem}.csv", index=False)
 
 
 if __name__ == "__main__":

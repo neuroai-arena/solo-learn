@@ -1,12 +1,14 @@
 import os
+from pathlib import Path
 
 import omegaconf
 from omegaconf import OmegaConf, ListConfig
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
 from solo.methods.base import BaseMethod
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import omegaconf_select
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
@@ -36,8 +38,17 @@ _N_CLASSES_PER_DATASET = {
     "Places365": 365,
     "StanfordCars": 196,
     "STL10": 10,
+    "STL10_224": 10,
+    "STL10_FG_224": 10,
+    "STL10_FG": 10,
     "Places365_h5": 365,
     "SUN397": 397,
+    "Caltech101": 101,
+    "imagenet1pct_42": 1000,
+    "imagenet10pct_42": 1000,
+    "toybox": 348,
+    'core50_bg': 11,
+    'COIL100': 100
 }
 
 _SUPPORTED_DATASETS = [
@@ -62,7 +73,18 @@ _SUPPORTED_DATASETS = [
     'StanfordCars',
     "STL10",
     "Places365_h5",
-    "SUN397"
+    "SUN397",
+    "Caltech101",
+    "imagenet1pct_42",
+    "imagenet10pct_42",
+    "toybox",
+    "core50_bg",
+    "feat",
+    "COIL100",
+    "STL10_224",
+    "STL10_FG_224",
+    "STL10_FG",
+    "tiny"
 ]
 
 
@@ -80,7 +102,7 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert not OmegaConf.is_missing(cfg, "data.train_path")
     assert not OmegaConf.is_missing(cfg, "data.val_path")
 
-    assert cfg.data.dataset in _SUPPORTED_DATASETS
+    assert cfg.data.dataset in _SUPPORTED_DATASETS, f"Use one of {_SUPPORTED_DATASETS}"
 
     cfg.data.format = omegaconf_select(cfg, "data.format", "image_folder")
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
@@ -170,7 +192,9 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # backbone kwargs
     cfg.backbone.kwargs = omegaconf_select(cfg, "backbone.kwargs", {})
 
-    assert not omegaconf.OmegaConf.is_missing(cfg, "pretrained_feature_extractor")
+    cfg.pretrained_feature_extractor = omegaconf_select(cfg, "pretrained_feature_extractor", None)
+
+    # assert not omegaconf.OmegaConf.is_missing(cfg, "pretrained_feature_extractor")
 
     cfg.pretrain_method = omegaconf_select(cfg, "pretrain_method", None)
 
@@ -193,6 +217,11 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # extra processing
     if cfg.data.dataset in _N_CLASSES_PER_DATASET:
         cfg.data.num_classes = _N_CLASSES_PER_DATASET[cfg.data.dataset]
+    elif cfg.data.dataset == "feat":
+        ds_name = Path(cfg.data.train_path).stem.split("_")[1]
+        if not ds_name in _N_CLASSES_PER_DATASET:
+            raise ValueError(f"Cannot infer dataset from feature path {cfg.data.train_path}")
+        cfg.data.num_classes = _N_CLASSES_PER_DATASET[ds_name]
     else:
         # hack to maintain the current pipeline
         # even if the custom dataset doesn't have any labels

@@ -37,7 +37,9 @@ def dataset_args(parser: ArgumentParser):
         "imagenet",
         "imagenet100",
         "imagenet100_42",
+        "imagenet_42",
         "custom",
+        "feat"
     ]
 
     parser.add_argument("--dataset", choices=SUPPORTED_DATASETS, type=str, required=True)

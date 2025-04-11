@@ -11,17 +11,20 @@ hydra:
   run:
     dir: .
 
-name: "mocov3_vit_gs336_t15"
+
+name: "mocov3_vit_gs540_t15_avgpool"
 method: "mocov3"
 backbone:
   name: "vit_base"
   kwargs:
     patch_size: 16
+    global_pool: 'avg'
+#    class_token: True
 method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
   pred_hidden_dim: 4096
-  temperature: 0.2
+  temperature: 0.1
 momentum:
   base_tau: 0.99
   final_tau: 1.00
@@ -32,14 +35,14 @@ data:
   format: "h5"
   num_workers: 8
   dataset_kwargs:
-    gaze_size: 336
+    gaze_size: 540
     time_window: 15
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
     resize_gs: False  # resize gaze to 224 before applying transform
 optimizer:
   name: "adamw"
-  batch_size: 256
-  lr: 1.5e-4
+  batch_size: 128
+  lr: 1.5e-4 # 0.00015 = 1.5e-4
   classifier_lr: 3e-3
   weight_decay: 0.1
   no_labels: True
@@ -51,10 +54,10 @@ checkpoint:
   dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
   frequency: 1
   keep_prev: True
-  every_n_iter: 1000
+  every_n_iter: 5000
 auto_resume:
   enabled: False
-
+  max_hours: -1
 knn_clb:
   enabled: True
   dataset: imagenet100_42
@@ -64,7 +67,7 @@ knn_clb:
   batch_size: 64
   k: [10, 20, 50, 100]
   perform_on_validation: False
-  perform_every_n_batches: 0.05 # perform every 10% of the training batches
+  perform_every_n_batches: 0.05 # perform every 5% of the training batches
   verbose: True
 
 # overwrite PL stuff
@@ -79,3 +82,5 @@ limit_val_batches: 0
 num_sanity_val_steps: 0
 val_check_interval: 100
 log_every_n_steps: 100
+gradient_clip_val: 1.0
+gradient_clip_algorithm: norm
