@@ -26,7 +26,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from solo.args.knn import parse_args_knn
@@ -40,7 +40,8 @@ from solo.utils.knn import WeightedKNNClassifier
 
 
 @torch.no_grad()
-def extract_features(loader: DataLoader, model: nn.Module) -> Tuple[torch.Tensor]:
+def extract_features_1(loader: DataLoader, model: nn.Module) -> Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Extract features from a data loader using a model.
 
     Args:
@@ -52,21 +53,97 @@ def extract_features(loader: DataLoader, model: nn.Module) -> Tuple[torch.Tensor
     """
 
     model.eval()
-    backbone_features, proj_features, labels = [], [], []
+    patches, patches_norm, prefixes, prefixes_norm, labels = [], [], [], [], []
     for im, lab in tqdm(loader):
         im = im.cuda(non_blocking=True)
         lab = lab.cuda(non_blocking=True)
-        outs = model(im)
-        backbone_features.append(outs["feats"].detach())
-        proj_features.append(outs["z"])
+
+        patch, prefix = model.backbone.get_intermediate_layers(
+            im,
+            n=1,
+            return_prefix_tokens=True,
+            norm=False,
+        )[0]
+
+        norm_layer = model.backbone.norm
+
+        # average pool
+        patch_norm = torch.mean(norm_layer(patch), dim=1)
+        patch = torch.mean(patch, dim=1)  # (B, N, D) -> (B, D)
+        patches.append(patch.detach())
+        patches_norm.append(patch_norm.detach())
+
+        # if CLS token is present
+        if not prefix.numel() == 0:
+            prefix_norm = norm_layer(prefix).reshape(prefix.shape[0], -1)
+            prefix = prefix.reshape(prefix.shape[0], -1)  # (B, N, D) -> (B, N*D)
+            prefixes.append(prefix.detach())
+            prefixes_norm.append(prefix_norm.detach())
+
         labels.append(lab)
+
     model.train()
-    backbone_features = torch.cat(backbone_features)
-    proj_features = torch.cat(proj_features)
+    patches = torch.cat(patches)
+    patches_norm = torch.cat(patches_norm)
     labels = torch.cat(labels)
-    return backbone_features, proj_features, labels
+
+    if prefixes and prefixes_norm:
+        prefixes = torch.cat(prefixes)
+        prefixes_norm = torch.cat(prefixes_norm)
+
+    return patches, patches_norm, prefixes, prefixes_norm, labels
 
 
+@torch.no_grad()
+def extract_features(loader: DataLoader, model: nn.Module) -> Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Extract features from a data loader using a model.
+
+    Args:
+        loader (DataLoader): dataloader for a dataset.
+        model (nn.Module): torch module used to extract features.
+
+    Returns:
+        Tuple(torch.Tensor): tuple containing the backbone features, projector features and labels.
+    """
+
+    model.eval()
+    patches, prefixes, cats, labels = [], [], [], []
+    for im, lab in tqdm(loader):
+        im = im.cuda(non_blocking=True)
+        lab = lab.cuda(non_blocking=True)
+
+        patch, prefix = model.backbone.get_intermediate_layers(
+            im,
+            n=1,
+            return_prefix_tokens=True,
+            norm=False,
+        )[0]
+
+        norm_layer = model.backbone.norm
+
+        # average pool
+        patch = torch.mean(patch, dim=1)  # (B, N, D) -> (B, D)
+        patches.append(patch.detach())
+
+        # if CLS token is present
+        if not prefix.numel() == 0:
+            prefix = prefix.reshape(prefix.shape[0], -1)  # (B, N, D) -> (B, N*D)
+            prefixes.append(prefix.detach())
+
+            cat = torch.cat([patch, prefix], dim=1) # (B, D) + (B, N*D) -> (B, D + N*D)
+            cats.append(cat.detach())
+        labels.append(lab)
+
+    model.train()
+    patches = torch.cat(patches)
+    labels = torch.cat(labels)
+
+    if prefixes:
+        prefixes = torch.cat(prefixes)
+        cats = torch.cat(cats)
+
+    return patches, prefixes, cats, labels
 
 
 @torch.no_grad()
@@ -155,6 +232,9 @@ def main():
         data_format=args.data_format,
         **cfg.data.dataset_kwargs
     )
+    # train_dataset = Subset(train_dataset, range(1000))
+
+
     train_loader, val_loader = prepare_dataloaders(
         train_dataset,
         val_dataset,
@@ -163,12 +243,26 @@ def main():
     )
 
     # extract train features
-    train_features_bb, train_features_proj, train_targets = extract_features(train_loader, model)
-    train_features = {"backbone": train_features_bb, "projector": train_features_proj}
+    # tf_patch, tf_patch_norm, tf_prefix, tf_prefix_norm,  train_targets = extract_features(train_loader, model)
+    # train_features = {"patch": tf_patch, "patch_norm": tf_patch_norm, "prefix": tf_prefix, "prefix_norm": tf_prefix_norm}
+
+    tf_patch, tf_prefix, tf_cats,  train_targets = extract_features(train_loader, model)
+    train_features = {"patch": tf_patch, "prefix": tf_prefix, "concat": tf_cats}
+
+    print("Train")
+    for k, v in train_features.items():
+        print(k, v.shape)
 
     # extract test features
-    test_features_bb, test_features_proj, test_targets = extract_features(val_loader, model)
-    test_features = {"backbone": test_features_bb, "projector": test_features_proj}
+    # test_patch, test_patch_norm, test_prefix, test_prefix_norm, test_targets = extract_features(val_loader, model)
+    # test_features = {"patch": test_patch, "patch_norm": test_patch_norm, "prefix": test_prefix, "prefix_norm": test_prefix_norm}
+
+    test_patch, test_prefix, test_cats, test_targets = extract_features(val_loader, model)
+    test_features = {"patch": test_patch, "prefix": test_prefix, "concat": test_cats}
+
+    print("Test")
+    for k, v in test_features.items():
+        print(k, v.shape)
 
     result = []
     # run k-nn for all possible combinations of parameters
@@ -190,7 +284,11 @@ def main():
                                    "acc5": acc5})
     result = pd.DataFrame(result)
     print(result)
-    result.to_csv(f"res/knn/knn_{ckpt_dir.stem}.csv", index=False)
+
+
+    import datetime
+    now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    result.to_csv(f"res/knn/knn_{ckpt_dir.stem}_{now}.csv", index=False)
 
 
 if __name__ == "__main__":

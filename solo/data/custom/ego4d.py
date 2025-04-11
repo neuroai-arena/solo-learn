@@ -5,21 +5,23 @@ import random
 
 import h5py
 import numpy as np
+import torch
 import torchvision
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
 
+from solo.data.cortical_magnification import radial_quad_isotrop_gridfun, img_cortical_magnif_tsr
 from solo.data.foveation import foveation
 
 
 class Ego4d(Dataset):
-
+    gaze_sizes = (112, 224, 336, 448, 540)
     corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9), (40,8)]
     readded = [71,56,67,74]
     def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, **kwargs):
         super().__init__()
-        assert gaze_size in  [112, 114, 160, 224, 313, 336, 440, 448, 540]
+        # assert gaze_size in self.gaze_sizes +("random", )
 
         self.data_root = data_root
         self.transform = transform
@@ -28,6 +30,7 @@ class Ego4d(Dataset):
         self.gaze_size = gaze_size
         self.resize_gs = resize_gs
         self.foveation = foveation
+
 
         self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95.h5"), "r")
         self.dataset = h5py.File(os.path.join(self.data_root, f"dataset_all95.h5"), "r")["data"]
@@ -38,8 +41,6 @@ class Ego4d(Dataset):
         #for c in self.readded:
         #    b = b & (self.dataset[:,5] != c)
         self.dataset = self.dataset[b]
-
-
 
         # self.dataset = self.dataset[(self.dataset[:,5] == 0) & (self.dataset[:,11] == 0) & (self.dataset[:,6] < 40) ]
         self.gaze_index = (9, 10)
@@ -70,21 +71,46 @@ class Ego4d(Dataset):
         binimg = self.hdf5_file.get(partition).get("frames").get(f"images540_{str(number)}")[index]
         img = Image.open(io.BytesIO(binimg))
 
-
-
         if self.center_crop:
             img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
-        elif gaze_size == 540:
-            if self.resize_gs:
-                img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
+        elif self.foveation and self.foveation.name == "cm_center":
+            imgtsr = torchvision.transforms.functional.to_tensor(img)
+            img = img_cortical_magnif_tsr(imgtsr, (270, 270), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.foveation.fov, K=self.foveation.K))
+            if not os.path.exists(f"/scratch/autolearn/aubret/ego4d/samples_fov/test.png"):
+                torchvision.utils.save_image(img, f"/scratch/autolearn/aubret/ego4d/samples_fov/test.png")
+            img = torchvision.transforms.functional.to_pil_image(img)
+
+
+            # img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
+
+        elif self.foveation and self.foveation.name == "cm":
+            imggtsr = torchvision.transforms.functional.to_tensor(img)
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
+            img = img_cortical_magnif_tsr(imgtsr, (gaze_y, gaze_x), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=20, K=20))
         elif self.foveation:
             ### We extract the gaze location in the image
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
-            img = foveation(img, (gaze_y, gaze_x), **self.foveation)
+            img = foveation(img, (gaze_y, gaze_x))
             img = torchvision.transforms.functional.to_pil_image(img)
+        elif gaze_size == 540:
+            if self.resize_gs:
+                img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
+
+        elif gaze_size == "random":
+            gaze_size = random.choice(self.gaze_sizes)
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
+            ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
+            gaze_x += - max(0, gaze_x + gaze_size // 2 - 540) - min(0, gaze_x - gaze_size // 2)
+            gaze_y += - max(0, gaze_y + gaze_size // 2 - 540) - min(0, gaze_y - gaze_size // 2)
+
+            img = torchvision.transforms.functional.crop(img,
+                                                         gaze_y - gaze_size // 2,
+                                                         gaze_x - gaze_size // 2,
+                                                         gaze_size,
+                                                         gaze_size,
+                                                         )
         else:
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
-
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
             gaze_x += - max(0,gaze_x + gaze_size//2 - 540) - min(0, gaze_x - gaze_size//2)
             gaze_y += - max(0,gaze_y + gaze_size//2 - 540) - min(0, gaze_y - gaze_size//2)

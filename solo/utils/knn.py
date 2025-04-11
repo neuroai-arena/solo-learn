@@ -29,7 +29,7 @@ class WeightedKNNClassifier(Metric):
         self,
         k: int = 20,
         T: float = 0.07,
-        max_distance_matrix_size: int = int(5e6),
+        max_distance_matrix_size: int = int(5e5),
         distance_fx: str = "cosine",
         epsilon: float = 0.00001,
         dist_sync_on_step: bool = False,

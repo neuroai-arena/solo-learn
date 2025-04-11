@@ -1,0 +1,82 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "mocov3_vit_gs336_t15-IN100"
+pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/kt0a6gcg/mocov3_vit_gs336_t15-kt0a6gcg-ep=60001.ckpt"
+
+
+backbone:
+  name: "vit_base"
+  kwargs:
+    patch_size: 16
+#    global_pool: 'avg'
+method: "mocov3"
+pretrain_method: "mocov3"
+data:
+  dataset: imagenet100_42
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets"
+  val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+  train_backgrounds: [ 's1', 's2', 's3', 's4', 's5', 's6' ]
+  val_backgrounds: [ 's7', 's8', 's9', 's10', 's11' ]
+  num_workers: 8
+optimizer:
+  name: "sgd"
+  batch_size: 128
+  lr: 0.1
+  weight_decay: 0
+  momentum: 0.9
+scheduler:
+  name: "warmup_cosine"
+  warmup_start_lr: 0.00001
+  warmup_epochs: 0
+  max_epochs: 100
+  interval: "epoch"
+checkpoint:
+  enabled: True
+  dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
+  frequency: 1
+  save_last: True
+auto_resume:
+  enabled: False
+early_stopping:
+  enabled: False
+  patience: 5
+  monitor: "val_acc1"
+  mode: "max"
+wandb:
+  enabled: True
+  entity: "aaubret"
+  project: "EgocentricVision"
+  group: "mocov3-vit"
+  job_type: "linear_probe_grid"
+  offline: False
+
+
+
+use_pre_extract_feats: False
+skip_pre_extraction_of_feats: False
+finetune: False
+
+grid:
+  enabled: True
+  lr: [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5]
+  use_avgpool: [True]
+  use_cls_token: [True]
+  use_n_blocks: [1]
+
+# overwrite PL stuff
+max_epochs: 100
+devices: 8
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 32
+log_every_n_steps: 50

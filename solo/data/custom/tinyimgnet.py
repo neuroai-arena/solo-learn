@@ -166,6 +166,7 @@ class TinyDataset(Dataset):
 
 
     self.samples = tinp.paths[mode]
+    # self.samples_num = 128
     self.samples_num = len(self.samples)
     self.n_classes = 200
 

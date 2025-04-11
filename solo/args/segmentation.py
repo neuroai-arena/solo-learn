@@ -1,90 +1,19 @@
 import os
-from pathlib import Path
 
 import omegaconf
 from omegaconf import OmegaConf, ListConfig
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-
 from solo.methods.base import BaseMethod
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import omegaconf_select
-
-try:
-    from solo.data.dali_dataloader import ClassificationDALIDataModule
-except ImportError:
-    _dali_available = False
-else:
-    _dali_available = True
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 _N_CLASSES_PER_DATASET = {
-    "cifar10": 10,
-    "cifar100": 100,
-    "cifar10_224": 10,
-    "cifar100_224": 100,
-    "imagenet": 1000,
-    "imagenet100": 100,
-    "imagenet2": 1000,
-    "imagenet2_100": 100,
-    "imagenet_42": 1000,
-    "imagenet100_42": 100,
-    "tiny": 200,
-    "core50": 50,
-    "DTD": 47,
-    "Flowers102": 102,
-    "FGVCAircraft": 100,
-    "Food101": 101,
-    "OxfordIIITPet": 37,
-    "Places365": 365,
-    "StanfordCars": 196,
-    "STL10": 10,
-    "STL10_224": 10,
-    "STL10_FG_224": 10,
-    "STL10_FG": 10,
-    "Places365_h5": 365,
-    "SUN397": 397,
-    "Caltech101": 101,
-    "imagenet1pct_42": 1000,
-    "imagenet10pct_42": 1000,
-    "toybox": 348,
-    'core50_bg': 11,
-    'COIL100': 100
+    "PascalVOC": 21,
 }
 
 _SUPPORTED_DATASETS = [
-    "cifar10",
-    "cifar100",
-    "cifar10_224",
-    "cifar100_224",
-    "imagenet",
-    "imagenet100",
-    "imagenet2",
-    "imagenet2_100",
-    "imagenet_42",
-    "imagenet100_42",
-    'core50',
-    "custom",
-    "DTD",
-    'Flowers102',
-    'FGVCAircraft',
-    'Food101',
-    'OxfordIIITPet',
-    'Places365',
-    'StanfordCars',
-    "STL10",
-    "Places365_h5",
-    "SUN397",
-    "Caltech101",
-    "imagenet1pct_42",
-    "imagenet10pct_42",
-    "toybox",
-    "core50_bg",
-    "feat",
-    "COIL100",
-    "STL10_224",
-    "STL10_FG_224",
-    "STL10_FG",
-    "tiny"
+    "PascalVOC"
 ]
 
 
@@ -106,8 +35,6 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
 
     cfg.data.format = omegaconf_select(cfg, "data.format", "image_folder")
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
-    cfg.data.train_backgrounds = omegaconf_select(cfg, "data.train_backgrounds", None)
-    cfg.data.val_backgrounds = omegaconf_select(cfg, "data.val_backgrounds", None)
 
     return cfg
 
@@ -165,10 +92,6 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # default values for auto_resume
     cfg = AutoResumer.add_and_assert_specific_cfg(cfg)
 
-    # default values for dali
-    if _dali_available:
-        cfg = ClassificationDALIDataModule.add_and_assert_specific_cfg(cfg)
-
     # assert dataset parameters
     cfg = add_and_assert_dataset_cfg(cfg)
 
@@ -192,9 +115,7 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # backbone kwargs
     cfg.backbone.kwargs = omegaconf_select(cfg, "backbone.kwargs", {})
 
-    cfg.pretrained_feature_extractor = omegaconf_select(cfg, "pretrained_feature_extractor", None)
-
-    # assert not omegaconf.OmegaConf.is_missing(cfg, "pretrained_feature_extractor")
+    assert not omegaconf.OmegaConf.is_missing(cfg, "pretrained_feature_extractor")
 
     cfg.pretrain_method = omegaconf_select(cfg, "pretrain_method", None)
 
@@ -217,11 +138,6 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # extra processing
     if cfg.data.dataset in _N_CLASSES_PER_DATASET:
         cfg.data.num_classes = _N_CLASSES_PER_DATASET[cfg.data.dataset]
-    elif cfg.data.dataset == "feat":
-        ds_name = Path(cfg.data.train_path).stem.split("_")[1]
-        if not ds_name in _N_CLASSES_PER_DATASET:
-            raise ValueError(f"Cannot infer dataset from feature path {cfg.data.train_path}")
-        cfg.data.num_classes = _N_CLASSES_PER_DATASET[ds_name]
     else:
         # hack to maintain the current pipeline
         # even if the custom dataset doesn't have any labels

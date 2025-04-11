@@ -29,6 +29,8 @@ from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from lightning.fabric import Fabric
+
 from solo.args.knn import parse_args_knn
 from solo.data.classification_dataloader import (
     prepare_dataloaders,
@@ -40,7 +42,8 @@ from solo.utils.knn import WeightedKNNClassifier
 
 
 @torch.no_grad()
-def extract_features(loader: DataLoader, model: nn.Module) -> Tuple[torch.Tensor]:
+def extract_features(loader: DataLoader, model: nn.Module, fabric: Fabric, momentum_model: bool = False) -> Tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor]:
     """Extract features from a data loader using a model.
 
     Args:
@@ -53,20 +56,22 @@ def extract_features(loader: DataLoader, model: nn.Module) -> Tuple[torch.Tensor
 
     model.eval()
     backbone_features, proj_features, labels = [], [], []
-    for im, lab in tqdm(loader):
-        im = im.cuda(non_blocking=True)
-        lab = lab.cuda(non_blocking=True)
-        outs = model(im)
+    bar = tqdm(loader) if fabric.local_rank == 0 else loader
+    for im, lab in bar:
+        if momentum_model:
+            outs = model.momentum_forward(im)
+            proj_features.append(outs["k"])
+        else:
+            outs = model(im)
+            proj_features.append(outs["z"])
+
         backbone_features.append(outs["feats"].detach())
-        proj_features.append(outs["z"])
         labels.append(lab)
     model.train()
     backbone_features = torch.cat(backbone_features)
     proj_features = torch.cat(proj_features)
     labels = torch.cat(labels)
     return backbone_features, proj_features, labels
-
-
 
 
 @torch.no_grad()
@@ -120,7 +125,12 @@ def run_knn(
 
 
 def main():
+    torch.set_float32_matmul_precision('medium')
+
     args = parse_args_knn()
+
+    fabric = Fabric(devices="auto")
+    fabric.launch()
 
     # build paths
     ckpt_dir = Path(args.pretrained_checkpoint_dir)
@@ -135,7 +145,6 @@ def main():
         ckpt_path = ckpt_path[-1]
 
     print("Using checkpoint", ckpt_path)
-
     # load arguments
     with open(args_path) as f:
         method_args = json.load(f)
@@ -162,15 +171,26 @@ def main():
         num_workers=args.num_workers,
     )
 
+    model = fabric.setup(model)
+    if args.momentum_model:
+        model.mark_forward_method('momentum_forward')
+
+    train_loader, val_loader = fabric.setup_dataloaders(train_loader, val_loader)
+
     # extract train features
-    train_features_bb, train_features_proj, train_targets = extract_features(train_loader, model)
+    train_features_bb, train_features_proj, train_targets = extract_features(train_loader, model, fabric, args.momentum_model)
     train_features = {"backbone": train_features_bb, "projector": train_features_proj}
 
     # extract test features
-    test_features_bb, test_features_proj, test_targets = extract_features(val_loader, model)
+    test_features_bb, test_features_proj, test_targets = extract_features(val_loader, model, fabric, args.momentum_model)
     test_features = {"backbone": test_features_bb, "projector": test_features_proj}
 
+    # synchronize
+    fabric.barrier()
+
     result = []
+    total_hp = len(args.feature_type) * len(args.k) * len(args.distance_function) * len(args.temperature)
+    bar = tqdm(total=total_hp) if fabric.local_rank == 0 else None
     # run k-nn for all possible combinations of parameters
     for feat_type in args.feature_type:
         for k in args.k:
@@ -188,9 +208,14 @@ def main():
                     )
                     result.append({"feat_type": feat_type, "distance_fx": distance_fx, "k": k, "T": T, "acc1": acc1,
                                    "acc5": acc5})
-    result = pd.DataFrame(result)
-    print(result)
-    result.to_csv(f"res/knn/knn_{ckpt_dir.stem}.csv", index=False)
+                    if bar is not None:
+                        bar.update(1)
+
+    if fabric.local_rank == 0:
+        result = pd.DataFrame(result)
+        print(result)
+        name = f"res/knn/knn_{args.dataset}_{ckpt_dir.stem}{'_momentum' if args.momentum_model else ''}.csv"
+        result.to_csv(name, index=False)
 
 
 if __name__ == "__main__":

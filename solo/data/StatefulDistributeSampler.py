@@ -49,8 +49,6 @@ class DataPrepIterCheck(pl.LightningDataModule):
         )
 
 
-
-
     def val_dataloader(self):
         if self.cfg.data.dataset == "custom" and (self.cfg.data.no_labels or self.cfg.data.val_path is None):
             val_loader = None
@@ -71,16 +69,16 @@ class DataPrepIterCheck(pl.LightningDataModule):
         return val_loader
 
     def train_dataloader(self):
-        if self.cfg.max_epochs == 1:
-            sampler = StatefulDistributedSampler(self.train_dataset, batch_size=self.cfg.optimizer.batch_size, seed=self.cfg.seed)
-            train_loader = prepare_dataloader(
-                self.train_dataset, batch_size=self.cfg.optimizer.batch_size, num_workers=self.cfg.data.num_workers,
-                sampler=sampler, shuffle=False
-            )
-        else:
-            train_loader = prepare_dataloader(
-                self.train_dataset, batch_size=self.cfg.optimizer.batch_size, num_workers=self.cfg.data.num_workers
-            )
+        # if self.cfg.max_epochs == 1:
+        sampler = StatefulDistributedSampler(self.train_dataset, batch_size=self.cfg.optimizer.batch_size, seed=self.cfg.seed)
+        train_loader = prepare_dataloader(
+            self.train_dataset, batch_size=self.cfg.optimizer.batch_size, num_workers=self.cfg.data.num_workers,
+            sampler=sampler, shuffle=False
+        )
+        # else:
+        #     train_loader = prepare_dataloader(
+        #         self.train_dataset, batch_size=self.cfg.optimizer.batch_size, num_workers=self.cfg.data.num_workers
+        #     )
         return train_loader
 
     def state_dict(self) -> Dict[str, Any]:
@@ -88,9 +86,6 @@ class DataPrepIterCheck(pl.LightningDataModule):
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         self.train_dataloader().sampler.set_start_iter(state_dict["steps"])
-
-
-
 
     # def load_from_checkpoint(
     #     cls,

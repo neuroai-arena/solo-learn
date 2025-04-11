@@ -1,0 +1,57 @@
+defaults:
+  - _self_
+  - wandb: ts_aubret.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "dino-imgnet100-linear-probe"
+pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dino/w79x0kv0/dino-vit_base-ego4d-w79x0kv0-ep=last.ckpt"
+backbone:
+  name: "vit_base"
+  kwargs:
+    dynamic_img_size: True
+method: "dino"
+data:
+  dataset: imagenet100_42
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/ImageNet/h5"
+  val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/ImageNet/h5"
+  num_workers: 8
+optimizer:
+  name: "sgd"
+  batch_size: 64
+  lr: 0.1
+  weight_decay: 0
+scheduler:
+  name: "step"
+  lr_decay_steps: [60, 80]
+#  name: "warmup_cosine"
+#  warmup_start_lr: 0.00001
+#  warmup_epochs: 0.0
+#  max_epochs: 100
+#  interval: "epoch"
+checkpoint:
+  enabled: True
+  dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
+  frequency: 1
+  save_last: True
+auto_resume:
+  enabled: False
+
+
+pre_extract_feats: False
+finetune: False
+
+# overwrite PL stuff
+max_epochs: 100
+devices: 8
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 32
+log_every_n_steps: 20

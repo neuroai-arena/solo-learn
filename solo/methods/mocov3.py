@@ -205,6 +205,7 @@ class MoCoV3(BaseMomentumMethod):
             torch.Tensor: total loss composed of MoCo V3 and classification loss.
         """
 
+
         out = super().training_step(batch, batch_idx)
         class_loss = out["loss"]
         Q = out["q"]

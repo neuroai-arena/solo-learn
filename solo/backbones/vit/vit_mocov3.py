@@ -46,7 +46,8 @@ class VisionTransformerMoCo(VisionTransformer):
                 else:
                     nn.init.xavier_uniform_(m.weight)
                 nn.init.zeros_(m.bias)
-        nn.init.normal_(self.cls_token, std=1e-6)
+        if self.has_class_token:
+            nn.init.normal_(self.cls_token, std=1e-6)
 
         if isinstance(self.patch_embed, PatchEmbed):
             # xavier_uniform initialization
@@ -55,6 +56,9 @@ class VisionTransformerMoCo(VisionTransformer):
             )
             nn.init.uniform_(self.patch_embed.proj.weight, -val, val)
             nn.init.zeros_(self.patch_embed.proj.bias)
+
+        print("Using global_pool", self.global_pool)
+        print("Has class token", self.has_class_token)
 
     def build_2d_sincos_position_embedding(self, temperature=10000.0):
         h, w = self.patch_embed.grid_size
@@ -78,10 +82,12 @@ class VisionTransformerMoCo(VisionTransformer):
         pos_emb = torch.cat(
             [torch.sin(out_w), torch.cos(out_w), torch.sin(out_h), torch.cos(out_h)], dim=1
         )[None, :, :]
-
-        assert self.num_prefix_tokens == 1, "Assuming one and only one token, [cls]"
-        pe_token = torch.zeros([1, 1, self.embed_dim], dtype=torch.float32)
-        self.pos_embed = nn.Parameter(torch.cat([pe_token, pos_emb], dim=1))
+        if self.has_class_token:
+            assert self.num_prefix_tokens == 1, "Assuming one and only one token, [cls]"
+            pe_token = torch.zeros([1, 1, self.embed_dim], dtype=torch.float32)
+            self.pos_embed = nn.Parameter(torch.cat([pe_token, pos_emb], dim=1))
+        else:
+            self.pos_embed = nn.Parameter(pos_emb)
         self.pos_embed.requires_grad = False
 
 
