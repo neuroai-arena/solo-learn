@@ -76,8 +76,6 @@ class Ego4d(Dataset):
         elif self.foveation and self.foveation.name == "cm_center":
             imgtsr = torchvision.transforms.functional.to_tensor(img)
             img = img_cortical_magnif_tsr(imgtsr, (270, 270), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.foveation.fov, K=self.foveation.K))
-            if not os.path.exists(f"/scratch/autolearn/aubret/ego4d/samples_fov/test.png"):
-                torchvision.utils.save_image(img, f"/scratch/autolearn/aubret/ego4d/samples_fov/test.png")
             img = torchvision.transforms.functional.to_pil_image(img)
 
 
