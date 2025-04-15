@@ -75,7 +75,7 @@ class Ego4d(Dataset):
             img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
         elif self.foveation and self.foveation.name == "cm_center":
             imgtsr = torchvision.transforms.functional.to_tensor(img)
-            img = img_cortical_magnif_tsr(imgtsr, (270, 270), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.foveation.fov, K=self.foveation.K))
+            img = img_cortical_magnif_tsr(imgtsr, (270, 270), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.foveation.fov, K=self.foveation.K), demo=False)
             img = torchvision.transforms.functional.to_pil_image(img)
 
 

@@ -77,10 +77,9 @@ def setup_linear_classifiers_only_lr(
     print("Setting up linear classifiers:")
     linear_classifiers_dict = nn.ModuleDict()
     optim_param_groups = []
-    for _lr in learning_rates:
+    for _lr in sorted(learning_rates):
 
         lr = scale_lr(_lr, batch_size, devices)
-
         out_dim = sample_output.shape[-1]
 
         linear_classifier = LinearClassifierSimple(out_dim, num_classes=num_classes)

@@ -425,7 +425,7 @@ class LinearModel(pl.LightningModule):
             feats = X
 
 
-        logits = self.classifier(feats)
+        logits = self.classifier(feats.detach())
         return {"logits": logits, "feats": feats}
 
     def shared_step(
@@ -524,17 +524,18 @@ class LinearModel(pl.LightningModule):
         all_metrics = set(self.validation_step_outputs[0].keys()) - set(["batch_size"])
 
         log = {}
-        for metric in all_metrics:
+        for metric in sorted(all_metrics):
             log[metric] = weighted_mean(self.validation_step_outputs, metric, "batch_size")
 
         self.validation_step_outputs.clear()
 
-        for acc1_key in filter(lambda x: "acc1" in x, all_metrics):
+        for acc1_key in sorted(filter(lambda x: "acc1" in x, all_metrics)):
             # gather all accuracies and average them
             val_acc1_all = self.all_gather(log[acc1_key])
             val_acc1_all = torch.mean(val_acc1_all)
+            # print(self.max_val_acc_top1[acc1_key], val_acc1_all,torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all))
             self.max_val_acc_top1[acc1_key] = torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all)
-            self.log(f"max/{acc1_key}", self.max_val_acc_top1[acc1_key], sync_dist=True)
+            log[f"max/{acc1_key}"] = self.max_val_acc_top1[acc1_key]
 
         self.log_dict(log, sync_dist=True)
 
