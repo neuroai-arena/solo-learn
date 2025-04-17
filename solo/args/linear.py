@@ -109,6 +109,7 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
     cfg.data.train_backgrounds = omegaconf_select(cfg, "data.train_backgrounds", None)
     cfg.data.val_backgrounds = omegaconf_select(cfg, "data.val_backgrounds", None)
+    cfg.data.transform_kwargs = omegaconf_select(cfg, "data.transform_kwargs", None)
 
     return cfg
 

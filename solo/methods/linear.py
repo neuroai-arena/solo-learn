@@ -14,6 +14,8 @@ import torch.nn.functional as F
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from torchvision.models.feature_extraction import create_feature_extractor
+
 from timm.models.vision_transformer import VisionTransformer
 
 from solo.utils.lars import LARS
@@ -25,6 +27,7 @@ from solo.utils.misc import (
     remove_bias_and_norm_from_weight_decay,
 )
 from solo.utils.multi_linear import setup_linear_classifiers
+from solo.backbones.vit import is_transformer
 
 
 class FeatureDataset(Dataset):
@@ -134,11 +137,19 @@ class LinearModel(pl.LightningModule):
         else:
             self.features_dim = self.backbone.num_features
 
-        self.is_transformer = isinstance(self.backbone, VisionTransformer)
+        self.is_transformer = is_transformer(backbone)
+
 
         if self.cfg.grid.enabled:
+            if not self.is_transformer and self.cfg.grid.layer_names is not None:
+                self.backbone = create_feature_extractor(self.backbone, return_nodes=list(self.cfg.grid.layer_names))
+
             sample_output = self.forward_backbone(torch.randn(2, 3, 224, 224))
-            print("Sample output shape", sample_output.shape)
+            if isinstance(sample_output, dict):
+                for k, v in sample_output.items():
+                    print(k, v.shape)
+            else:
+                print("Sample output shape", sample_output.shape)
 
             self.classifier, self.optim_param_groups = setup_linear_classifiers(
                 sample_output=sample_output,
@@ -148,10 +159,10 @@ class LinearModel(pl.LightningModule):
                 devices=self.cfg.devices,
                 num_classes=self.cfg.data.num_classes,
                 is_transformer=self.is_transformer,
-
                 use_avgpool=self.cfg.grid.use_avgpool,
                 use_cls_token=self.cfg.grid.use_cls_token,
                 use_n_blocks=self.cfg.grid.use_n_blocks,
+                layer_names=self.cfg.grid.layer_names,
             )
         else:
             self.classifier = nn.Linear(self.features_dim, cfg.data.num_classes)
@@ -264,6 +275,7 @@ class LinearModel(pl.LightningModule):
         cfg.grid.use_avgpool = omegaconf_select(cfg, "grid.use_avgpool", None)
         cfg.grid.use_cls_token = omegaconf_select(cfg, "grid.use_cls_token", None)
         cfg.grid.use_n_blocks = omegaconf_select(cfg, "grid.use_n_blocks", None)
+        cfg.grid.layer_names = omegaconf_select(cfg, "grid.layer_names", None)
 
         return cfg
 
@@ -391,7 +403,7 @@ class LinearModel(pl.LightningModule):
                 X,
                 n=max(self.cfg.grid.use_n_blocks),
                 return_prefix_tokens=True,
-                norm=False,
+                norm=True,
             )
             out = torch.stack(
                 [torch.cat(
@@ -402,6 +414,7 @@ class LinearModel(pl.LightningModule):
                     dim=1) for patch, prefix in out],
                 dim=1)  # (batch, layer, num_prefix + 1, dim)
             return out
+
         return self.backbone(X)
 
     def forward(self, X: torch.tensor) -> Dict[str, Any]:
@@ -423,7 +436,6 @@ class LinearModel(pl.LightningModule):
                 feats = self.forward_backbone(X)
         else:
             feats = X
-
 
         logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}

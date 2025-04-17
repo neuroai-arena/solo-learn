@@ -77,19 +77,26 @@ def main(cfg: DictConfig):
 
     ckpt_path = cfg.pretrained_feature_extractor
 
-    # assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
+    assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
     if cfg.pretrained_feature_extractor is not None:
-        state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+        state = torch.load(ckpt_path, map_location="cpu")
+
+        if cfg.pretrain_method == 'dinov2':
+            state = state['model']
+            _filter = f"{cfg.network_type}.backbone."
+        else:
+            state = state["state_dict"]
+            _filter = "backbone."
+
         for k in list(state.keys()):
             if "encoder" in k:
                 state[k.replace("encoder", "backbone")] = state[k]
-                logging.warn(
-                    "You are using an older checkpoint. Use a new one as some issues might arrise."
-                )
-            if "backbone" in k:
-                state[k.replace("backbone.", "")] = state[k]
+            if _filter in k:
+                state[k.replace(_filter, "")] = state[k]
             del state[k]
-        backbone.load_state_dict(state, strict=False)
+
+        _keys = backbone.load_state_dict(state, strict=False)
+        print(_keys)
         logging.info(f"Loaded {ckpt_path}")
 
     # check if mixup or cutmix is enabled
@@ -134,7 +141,8 @@ def main(cfg: DictConfig):
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
         train_backgrounds=cfg.data.train_backgrounds,
-        val_backgrounds=cfg.data.val_backgrounds
+        val_backgrounds=cfg.data.val_backgrounds,
+        transform_kwargs=cfg.data.transform_kwargs
     )
 
     if cfg.data.format == "dali":
@@ -177,6 +185,7 @@ def main(cfg: DictConfig):
     elif cfg.resume_from_checkpoint is not None:
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
+
     callbacks = []
 
     if cfg.checkpoint.enabled:

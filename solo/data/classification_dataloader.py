@@ -35,6 +35,7 @@ from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42, ImageNetS
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
 from solo.data.custom.tinyimgnet import TinyDataset
+from solo.data.pretrain_dataloader import GaussianBlur
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -85,7 +86,7 @@ def build_custom_pipeline():
     return pipeline
 
 
-def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
+def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
     """Prepares pre-defined train and test transformation pipelines for some datasets.
 
     Args:
@@ -248,7 +249,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     coil100_pipeline = {
         "T_train": transforms.Compose(
             [
-                transforms.RandomResizedCrop(size=128, scale=(0.08, 1.0)),
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
@@ -256,6 +257,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
         "T_val": transforms.Compose(
             [
+                transforms.Resize(224),  # resize shorter
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
             ]
@@ -306,6 +308,13 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     T_train = pipeline["T_train"]
     T_val = pipeline["T_val"]
 
+    if kwargs.get("global_gaussian_blur", None) is not None:
+        sigma = kwargs["global_gaussian_blur"]["sigma"]
+        T_train.transforms.insert(0, GaussianBlur(sigma=sigma))
+        T_val.transforms.insert(0, GaussianBlur(sigma=sigma))
+
+    print("T_train", T_train)
+    print("T_val", T_val)
     return T_train, T_val
 
 
@@ -531,6 +540,7 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
+        transform_kwargs: Optional[dict] = None,
         **dataset_kwargs
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
@@ -554,7 +564,7 @@ def prepare_data(
         Tuple[DataLoader, DataLoader]: prepared training and validation dataloader.
     """
 
-    T_train, T_val = prepare_transforms(dataset)
+    T_train, T_val = prepare_transforms(dataset, **(transform_kwargs or {}))
     if auto_augment:
         T_train = create_transform(
             input_size=224,
