@@ -74,6 +74,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.optimizer.batch_size,
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
+        transform_kwargs=cfg.data.augmentations
     )
 
     # 1.7 will deprecate resume_from_checkpoint, but for the moment

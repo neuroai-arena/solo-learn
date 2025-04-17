@@ -4,8 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from omegaconf import DictConfig
-from torchmetrics.segmentation import MeanIoU
 # from torchvision.models.feature_extraction import create_feature_extractor
+from timm.models.vision_transformer import resample_abs_pos_embed
+from torchmetrics.segmentation import MeanIoU
 
 from solo.methods.linear import LinearModel
 
@@ -16,29 +17,58 @@ class SegmentationHead(nn.Module):
                  width: int,
                  height: int,
                  num_classes: int,
+                 dropout_ratio: float = 0.1,
                  ):
         super().__init__()
         self.in_channels = in_channels
         self.width = width
         self.height = height
+
+        self.bn = nn.SyncBatchNorm(in_channels)
         self.classifier = nn.Conv2d(in_channels, num_classes, kernel_size=(1, 1))
+
+        if dropout_ratio > 0:
+            self.dropout = nn.Dropout2d(dropout_ratio)
+        else:
+            self.dropout = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.reshape(-1, self.height, self.width, self.in_channels)  # (bs, num_tokens, c) -> (bs, h, w, c)
+
         x = x.permute(0, 3, 1, 2)  # (bs, h, w, c) -> (bs, c, h, w)
-        return self.classifier(x)  # (bs, c, h, w) -> (bs, num_classes, h, w)
+
+        x = self.bn(x)
+
+        if self.dropout is not None:
+            x = self.dropout(x)
+
+        return self.classifier(x) # (bs, c, h, w) -> (bs, num_classes, h, w)
 
 
 class SegmentationModel(LinearModel):
     def __init__(self, backbone: nn.Module, cfg: DictConfig):
         super().__init__(backbone, cfg)
 
+        img_size = (cfg.data.augmentations.img_size, cfg.data.augmentations.img_size)
+        if img_size !=self.backbone.patch_embed.img_size:
+            print("Resampling position embeddings to fit new image size {}".format(img_size))
+
+            new_H = img_size[0] // self.backbone.patch_embed.patch_size[0]
+            new_W = img_size[1] // self.backbone.patch_embed.patch_size[1]
+
+            self.backbone.patch_embed.strict_img_size = False
+            self.backbone.patch_embed.img_size = img_size
+            self.backbone.patch_embed.grid_size = (new_H, new_W)
+
+            self.backbone.pos_embed = torch.nn.Parameter(
+                resample_abs_pos_embed(self.backbone.pos_embed, new_size=[new_H, new_W],
+                                       num_prefix_tokens=self.backbone.num_prefix_tokens,
+                                       verbose=True))
+
         if hasattr(self.backbone, "patch_embed"):  # transformer backbone
             feat_heigth, feat_width = getattr(self.backbone.patch_embed, "grid_size")
         else:
             raise ValueError("Backbone type not supported for segmentation")
-
-        # self.backbone = create_feature_extractor(backbone, cfg.data.dataset, use_patches=True)
 
         if not hasattr(self.backbone, "forward_features"):
             raise ValueError("Backbone forward_features method not implemented")
@@ -60,10 +90,11 @@ class SegmentationModel(LinearModel):
             Dict[str, Any]: a dict containing features and logits.
         """
 
-        if not self.no_channel_last and not self.pre_extract_feats:
+        if not self.no_channel_last and not self.use_pre_extract_feats:
             X = X.to(memory_format=torch.channels_last)
 
-        if not self.pre_extract_feats or self.trainer.sanity_checking:
+        if not self.use_pre_extract_feats or (
+                self.trainer.sanity_checking and not self.cfg.skip_pre_extraction_of_feats):
             with torch.set_grad_enabled(self.finetune):
                 feats = self.backbone.forward_features(X)
         else:

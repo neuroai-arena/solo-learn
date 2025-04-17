@@ -127,7 +127,7 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     # augmentation related (crop size and custom mean/std values for normalization)
     cfg.data.augmentations = omegaconf_select(cfg, "data.augmentations", {})
-    cfg.data.augmentations.crop_size = omegaconf_select(cfg, "data.augmentations.crop_size", 224)
+    cfg.data.augmentations.crop_size = omegaconf_select(cfg, "data.augmentations.img_size", 224)
     cfg.data.augmentations.mean = omegaconf_select(
         cfg, "data.augmentations.mean", IMAGENET_DEFAULT_MEAN
     )
