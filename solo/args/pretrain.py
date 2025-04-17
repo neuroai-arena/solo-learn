@@ -112,6 +112,7 @@ def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
             assert cfg.knn_clb.perform_every_n_batches < 1, "perform_every_n_batches must be less than 1"
 
     cfg.knn_clb.verbose = omegaconf_select(cfg, "knn_clb.verbose", False)
+    cfg.knn_clb.transform_kwargs = omegaconf_select(cfg, "knn_clb.transform_kwargs", None)
 
     return cfg
 

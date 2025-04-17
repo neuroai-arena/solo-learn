@@ -101,8 +101,10 @@ class GaussianBlur:
         Returns:
             Image: blurred image.
         """
-
-        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        if not isinstance(self.sigma, (float, int)):
+            sigma = random.uniform(self.sigma[0], self.sigma[1])
+        else:
+            sigma = self.sigma
         img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
         return img
 
@@ -231,6 +233,11 @@ def build_transform_pipeline(dataset, cfg):
     )
 
     augmentations = []
+
+    if hasattr(cfg, "global_gaussian_blur") and cfg.global_gaussian_blur.enabled:
+        print("ADDING global_gaussian_blur wiht sigma", cfg.global_gaussian_blur.sigma)
+        augmentations.append(GaussianBlur(sigma=cfg.global_gaussian_blur.sigma))
+
     if cfg.rrc.enabled:
         augmentations.append(
             transforms.RandomResizedCrop(

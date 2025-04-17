@@ -17,7 +17,7 @@ class KNNCallback(pl.Callback):
         self.train_loader, self.test_loader = None, None
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        T_train, T_val = prepare_transforms(self.cfg.dataset)
+        T_train, T_val = prepare_transforms(self.cfg.dataset, **(self.cfg.transform_kwargs or {}))
 
         train_dataset, val_dataset = prepare_datasets(
             self.cfg.dataset,
@@ -26,7 +26,6 @@ class KNNCallback(pl.Callback):
             train_data_path=self.cfg.train_path,
             val_data_path=self.cfg.val_path,
             data_format=self.cfg.format,
-
         )
         self.train_loader = DataLoader(
             train_dataset,
