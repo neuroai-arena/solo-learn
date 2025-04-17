@@ -18,6 +18,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 import logging
+from timm.models.vision_transformer import VisionTransformer
 
 from .vit import vit_tiny as default_vit_tiny
 from .vit import vit_small as default_vit_small
@@ -33,6 +34,15 @@ from .vit_mae import vit_tiny as mae_vit_tiny
 from .vit_mae import vit_small as mae_vit_small
 from .vit_mae import vit_base as mae_vit_base
 from .vit_mae import vit_large as mae_vit_large
+
+from .vit_dino import vit_small as dinov2_vit_small
+from .vit_dino import vit_base as dinov2_vit_base
+from .vit_dino import vit_large as dinov2_vit_large
+from .vit_dino import DinoVisionTransformer
+
+
+def is_transformer(model) -> bool:
+    return isinstance(model, (DinoVisionTransformer, VisionTransformer,))
 
 
 def get_constructor(method, options, default):
@@ -50,17 +60,17 @@ def vit_tiny(method, *args, **kwargs):
 
 
 def vit_small(method, *args, **kwargs):
-    custom_backbone_constructor = {"mocov3": mocov3_vit_small, "mae": mae_vit_small}
+    custom_backbone_constructor = {"mocov3": mocov3_vit_small, "mae": mae_vit_small, 'dinov2': dinov2_vit_small}
     return get_constructor(method, custom_backbone_constructor, default_vit_small)(*args, **kwargs)
 
 
 def vit_base(method, *args, **kwargs):
-    custom_backbone_constructor = {"mocov3": mocov3_vit_base, "mae": mae_vit_base}
+    custom_backbone_constructor = {"mocov3": mocov3_vit_base, "mae": mae_vit_base, 'dinov2': dinov2_vit_base}
     return get_constructor(method, custom_backbone_constructor, default_vit_base)(*args, **kwargs)
 
 
 def vit_large(method, *args, **kwargs):
-    custom_backbone_constructor = {"mocov3": mocov3_vit_large, "mae": mae_vit_large}
+    custom_backbone_constructor = {"mocov3": mocov3_vit_large, "mae": mae_vit_large, 'dinov2': dinov2_vit_large}
     return get_constructor(method, custom_backbone_constructor, default_vit_large)(*args, **kwargs)
 
 
