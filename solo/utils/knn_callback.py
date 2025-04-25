@@ -50,8 +50,12 @@ class KNNCallback(pl.Callback):
             print("Estimated stepping batches", trainer.estimated_stepping_batches)
             self.cfg.perform_every_n_batches = int(trainer.estimated_stepping_batches * self.cfg.perform_every_n_batches / trainer.max_epochs)
 
-    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs:
+    # def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    #     if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
+    #         self._run(trainer, pl_module)
+
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
             self._run(trainer, pl_module)
 
     def on_test_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:

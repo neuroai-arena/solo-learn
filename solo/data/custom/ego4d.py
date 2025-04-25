@@ -82,7 +82,7 @@ class Ego4d(Dataset):
             # img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
 
         elif self.foveation and self.foveation.name == "cm":
-            imggtsr = torchvision.transforms.functional.to_tensor(img)
+            imgtsr = torchvision.transforms.functional.to_tensor(img)
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
             img = img_cortical_magnif_tsr(imgtsr, (gaze_y, gaze_x), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=20, K=20))
         elif self.foveation:

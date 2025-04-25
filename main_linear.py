@@ -134,7 +134,8 @@ def main(cfg: DictConfig):
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
         train_backgrounds=cfg.data.train_backgrounds,
-        val_backgrounds=cfg.data.val_backgrounds
+        val_backgrounds=cfg.data.val_backgrounds,
+        aug_kwargs = cfg.aug_kwargs
     )
 
     if cfg.data.format == "dali":
@@ -206,6 +207,7 @@ def main(cfg: DictConfig):
             job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
+            tags=cfg.wandb.tags,
             save_dir=d
         )
         # wandb_logger.watch(model, log="gradients", log_freq=100)

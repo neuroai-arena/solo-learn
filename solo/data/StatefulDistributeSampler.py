@@ -52,7 +52,7 @@ class DataPrepIterCheck(pl.LightningDataModule):
     def val_dataloader(self):
         if self.cfg.data.dataset == "custom" and (self.cfg.data.no_labels or self.cfg.data.val_path is None):
             val_loader = None
-        elif self.cfg.data.dataset in ["imagenet100", "imagenet", "ego4d"] and self.cfg.data.val_path is None:
+        elif self.cfg.data.dataset in ["imagenet100", "imagenet", "ego4d", "nymeria"] and self.cfg.data.val_path is None:
             val_loader = None
         else:
             val_data_format = self.cfg.data.format

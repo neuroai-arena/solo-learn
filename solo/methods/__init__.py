@@ -26,6 +26,8 @@ from solo.methods.linear import LinearModel
 from solo.methods.mae import MAE
 from solo.methods.mocov2plus import MoCoV2Plus
 from solo.methods.mocov3 import MoCoV3
+from solo.methods.mocov3aa import AAMoCoV3
+from solo.methods.mocov3ciper import CiperMoCoV3
 from solo.methods.nnbyol import NNBYOL
 from solo.methods.nnclr import NNCLR
 from solo.methods.nnsiam import NNSiam
@@ -52,6 +54,8 @@ METHODS = {
     "mae": MAE,
     "mocov2plus": MoCoV2Plus,
     "mocov3": MoCoV3,
+    "aamocov3": AAMoCoV3,
+    "cipermocov3": CiperMoCoV3,
     "nnbyol": NNBYOL,
     "nnclr": NNCLR,
     "nnsiam": NNSiam,
@@ -87,4 +91,6 @@ __all__ = [
     "VICReg",
     "WMSE",
     "All4One",
+    "AAMoCoV3",
+    "CiperMoCoV3"
 ]

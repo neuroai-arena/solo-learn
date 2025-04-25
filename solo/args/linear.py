@@ -127,9 +127,19 @@ def add_and_assert_wandb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     cfg.wandb.entity = omegaconf_select(cfg, "wandb.entity", None)
     cfg.wandb.project = omegaconf_select(cfg, "wandb.project", "solo-learn")
     cfg.wandb.offline = omegaconf_select(cfg, "wandb.offline", False)
+    cfg.wandb.tags = omegaconf_select(cfg, "wandb.tags", [])
+
 
     return cfg
 
+def add_and_assert_aug_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
+    cfg.aug_kwargs = omegaconf_select(cfg, "aug_kwargs", {})
+    cfg.aug_kwargs.cm = omegaconf_select(cfg, "aug_kwargs.cm", {})
+    cfg.aug_kwargs.cm.enabled = omegaconf_select(cfg, "aug_kwargs.cm.enabled", False)
+    cfg.aug_kwargs.cm.fov = omegaconf_select(cfg, "aug_kwargs.cm.fov", 20)
+    cfg.aug_kwargs.cm.K = omegaconf_select(cfg, "aug_kwargs.cm.K", 10)
+
+    return cfg
 
 def add_and_assert_lightning_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     """Adds specific default values/checks for Pytorch Lightning config.
@@ -256,4 +266,5 @@ def parse_cfg(cfg: omegaconf.DictConfig):
         cfg.optimizer.kwargs.betas = omegaconf_select(cfg, "optimizer.kwargs.betas", [0.9, 0.999])
 
     cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
+    cfg = add_and_assert_aug_cfg(cfg)
     return cfg

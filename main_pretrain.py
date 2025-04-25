@@ -143,6 +143,7 @@ def main(cfg: DictConfig):
             job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
+            tags=cfg.wandb.tags,
             save_dir=d
         )
         wandb_logger.watch(model, log="gradients", log_freq=100)

@@ -1,13 +1,20 @@
 from pathlib import Path
 
+import argparse
 import h5py
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+parser = argparse.ArgumentParser()
+
+# add knn args
+parser.add_argument("--data_root", default="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/", type=str)
+# parse args
+args = parser.parse_args()
 
 if __name__ == '__main__':
-    dataset_root = Path("/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/")
+    dataset_root = Path(args.data_root)
     output_dir = dataset_root / "ImageNet" / "h5"
     output_dir.mkdir(exist_ok=True, parents=True)
 

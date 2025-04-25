@@ -2,6 +2,8 @@ from typing import Tuple
 
 import torch
 import torch.nn.functional as F
+import torchvision
+from torch import nn
 from torchvision.utils import make_grid
 from torchvision.transforms import ToPILImage, ToTensor
 import numpy as np
@@ -80,7 +82,7 @@ def get_RandomMagnifTfm(grid_generator="radial_quad_isotrop", bdr=16, fov=20, K=
     return randomMagnif
 
 
-def img_cortical_magnif_tsr(imgtsr, pnt, grid_func, demo=True):
+def img_cortical_magnif_tsr(imgtsr, pnt, grid_func, demo=False):
     if imgtsr.ndim == 4:
         imgtsr.squeeze_(0)
     _, H, W = imgtsr.shape
@@ -245,6 +247,63 @@ def radial_exp_isotrop_gridfun(imgtsr, pnt, slope_C=2.0, cover_ratio=None):
     YY_intp = pY + coef * ecc_tfm * (grid_y / ecc)  # sine
     return XX_intp, YY_intp
 
+class CorticalMagnification(nn.Module):
+    def __init__(self, fov, K, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fov = fov
+        self.K = K
+
+
+    def forward(self, img):
+        return img_cortical_magnif_tsr(img, (img.shape[1]//2, img.shape[2]//2),
+                                      lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.fov,
+                                                                                    K=self.K), demo=False)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}"
+
+
+
+class CenterCropBig(torch.nn.Module):
+    def __init__(self, size=None, ratio="1:1"):
+        super().__init__()
+        self.size = size
+        self.ratio = ratio
+
+    def forward(self, img):
+        """
+        Args:
+            img (PIL Image or Tensor): Image to be cropped.
+
+        Returns:
+            PIL Image or Tensor: Cropped image.
+        """
+        if self.size is None:
+            if isinstance(img, torch.Tensor):
+                h, w = img.shape[-2:]
+            else:
+                w, h = img.size
+            ratio = self.ratio.split(":")
+            ratio = float(ratio[0]) / float(ratio[1])
+            # Size must match the ratio while cropping to the edge of the image
+            ratioed_w = int(h * ratio)
+            ratioed_h = int(w / ratio)
+            if w>=h:
+                if ratioed_h <= h:
+                    size = (ratioed_h, w)
+                else:
+                    size = (h, ratioed_w)
+            else:
+                if ratioed_w <= w:
+                    size = (h, ratioed_w)
+                else:
+                    size = (ratioed_h, w)
+        else:
+            size = self.size
+        return torchvision.transforms.functional.center_crop(img, size)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(size={self.size})"
 
 # %%
 if __name__ == "__main__":
@@ -252,25 +311,32 @@ if __name__ == "__main__":
     from scipy.datasets import face
     from skimage.transform import rescale
 
-    img = rescale(face(), (0.25, 0.25, 1))
-    imgtsr = torch.tensor(img).permute([2, 0, 1]).float()
-    # %%
-    img_cm = img_cortical_magnif_tsr(imgtsr, (80, 120), linear_separable_gridfun, demo=True)
-    # %%
-    img_cm = img_cortical_magnif_tsr(imgtsr, (80, 120), normal_gridfun, demo=True)
-    # %%
-    img_cm = img_cortical_magnif_tsr(imgtsr, (10, 190),
-                                     lambda img, pnt: radial_quad_isotrop_gridfun(img, pnt, fov=20, K=20), demo=True)
-    # %%
-    img_cm = img_cortical_magnif_tsr(imgtsr, (100, 30),
-                                     lambda img, pnt: radial_exp_isotrop_gridfun(img, pnt, slope_C=2.0,
-                                                                                 cover_ratio=0.4), demo=True)
+    # img = rescale(face(), (0.25, 0.25, 1))
+    # imgtsr = torch.tensor(img).permute([2, 0, 1]).float()
+    # # %%
+    # img_cm = img_cortical_magnif_tsr(imgtsr, (80, 120), linear_separable_gridfun, demo=True)
+    # # %%
+    # img_cm = img_cortical_magnif_tsr(imgtsr, (80, 120), normal_gridfun, demo=True)
+    # # %%
+    # img_cm = img_cortical_magnif_tsr(imgtsr, (10, 190),
+    #                                  lambda img, pnt: radial_quad_isotrop_gridfun(img, pnt, fov=20, K=20), demo=True)
+    # # %%
+    # img_cm = img_cortical_magnif_tsr(imgtsr, (100, 30),
+    #                                  lambda img, pnt: radial_exp_isotrop_gridfun(img, pnt, slope_C=2.0,
+    #                                                                              cover_ratio=0.4), demo=True)
+
+    imgtsr = torchvision.transforms.functional.to_tensor(Image.open("/home/aubret/Documents/postdoc/gym_results/test_images/ego4d_select/frames/output_frame_0558.png").convert("RGB"))
+    img_cm = img_cortical_magnif_tsr(imgtsr, (270, 480),
+                                     lambda img, pnt: radial_quad_isotrop_gridfun(img, pnt, fov=10, K=5), demo=True)
+    torchvision.utils.save_image(img_cm, "/home/aubret/Documents/postdoc/gym_results/test_images/ego4d_select/cm3.png")
 
     # %%  linear_separable
-    rndMagnif = get_RandomMagnifTfm(grid_generator="radial_quad_isotrop", bdr=16, fov=20, K=0, cover_ratio=(0.05, 1))
-    mtg = make_grid([rndMagnif(imgtsr) for _ in range(9)], nrow=3)
-    mtg_pil = ToPILImage()(mtg)
-    mtg_pil.show()
+    # rndMagnif = get_RandomMagnifTfm(grid_generator="radial_quad_isotrop", bdr=16, fov=20, K=0, cover_ratio=(0.05, 1))
+    # mtg = make_grid([rndMagnif(imgtsr) for _ in range(9)], nrow=3)
+    # mtg_pil = ToPILImage()(mtg)
+    # mtg_pil.show()
+    #
+
     # %%
     # rndMagnif = get_RandomMagnifTfm(grid_generator="normal", bdr=16, fov=30, K=5)
     # mtg = make_grid([rndMagnif(imgtsr) for _ in range(9)], nrow=3)

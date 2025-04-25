@@ -31,6 +31,7 @@ _N_CLASSES_PER_DATASET = {
     "imagenet2_100": 100,
     "tiny": 200,
     "ego4d": 0,
+    "nymeria": 0
 }
 
 _SUPPORTED_DATASETS = [
@@ -43,7 +44,8 @@ _SUPPORTED_DATASETS = [
     "imagenet2",
     "imagenet2_100",
     "tiny",
-    "ego4d"
+    "ego4d",
+    "nymeria"
 ]
 
 
@@ -102,6 +104,7 @@ def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     cfg.knn_clb.perform_on_validation = omegaconf_select(cfg, "knn_clb.perform_on_validation", True)
     cfg.knn_clb.perform_on_test = omegaconf_select(cfg, "knn_clb.perform_on_test", False)
     cfg.knn_clb.delay_epochs = omegaconf_select(cfg, "knn_clb.delay_epochs", 0)
+    cfg.knn_clb.freq_epochs = omegaconf_select(cfg, "knn_clb.freq_epochs", 1)
     cfg.knn_clb.perform_every_n_batches = omegaconf_select(cfg, "knn_clb.perform_every_n_batches", None)
 
     if cfg.knn_clb.perform_every_n_batches is not None:
@@ -133,6 +136,7 @@ def add_and_assert_wandb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     cfg.wandb.offline = omegaconf_select(cfg, "wandb.offline", False)
     cfg.wandb.group = omegaconf_select(cfg, "wandb.group", None)
     cfg.wandb.job_type = omegaconf_select(cfg, "wandb.job_type", None)
+    cfg.wandb.tags = omegaconf_select(cfg, "wandb.tags", [])
 
     return cfg
 
