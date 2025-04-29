@@ -3,21 +3,21 @@ import subprocess
 import argparse
 
 ckpts = [
-    # "iiiqnrs0/mocov3nf_lr16-iiiqnrs0-ep=last.ckpt",
-    # "q9y4x1nm/mocov3nf_lr16_c£enter-q9y4x1nm-ep=last.ckpt",
-    # "mocov3nf_lr16_gs540resize-mv0pnuza-ep=last.ckpt",
-    # "mocov3nf_lr16t0-yboaa3by-ep=last.ckpt",
-    # "mocov3nf_lr16t20-zd0jdcjy-ep=last.ckpt",
-    # "mocov3nf_lr16t5-1qc1r931-ep=last.ckpt",
-    # "mocov3nf_lr16t10-vpi2u0mn-ep=last.ckpt",
-    # "ba1e2na0/mocov3nf_lr16_gs540-ba1e2na0-ep=last.ckpt",
-    # "mocov3nf_lr16_gs448-i477bc9q-ep=last.ckpt",
-    # "mocov3nf_lr16_gs336-w5mbrmup-ep=last.ckpt",
-    # "mocov3nf_lr16_gs112-rsl7me4h-ep=last.ckpt",
-    # "mocov3nf_lr16t25-qo9qs3j3-ep=last.ckpt",
-    # "tlyydhj5/mocov3nf_lr16_gs336_t5-tlyydhj5-ep=last.ckpt"
-    # 'm4lf6jxv/mocov3nf_lr16_gs540_resize_t5-m4lf6jxv-ep=last.ckpt'.
-    # "ewnydxom/mocov3nf_lr16_gs540_t0-ewnydxom-ep=last.ckpt",
+    "iiiqnrs0/mocov3nf_lr16-iiiqnrs0-ep=last.ckpt",
+    "q9y4x1nm/mocov3nf_lr16_c£enter-q9y4x1nm-ep=last.ckpt",
+    "mocov3nf_lr16_gs540resize-mv0pnuza-ep=last.ckpt",
+    "mocov3nf_lr16t0-yboaa3by-ep=last.ckpt",
+    "mocov3nf_lr16t20-zd0jdcjy-ep=last.ckpt",
+    "mocov3nf_lr16t5-1qc1r931-ep=last.ckpt",
+    "mocov3nf_lr16t10-vpi2u0mn-ep=last.ckpt",
+    "ba1e2na0/mocov3nf_lr16_gs540-ba1e2na0-ep=last.ckpt",
+    "mocov3nf_lr16_gs448-i477bc9q-ep=last.ckpt",
+    "mocov3nf_lr16_gs336-w5mbrmup-ep=last.ckpt",
+    "mocov3nf_lr16_gs112-rsl7me4h-ep=last.ckpt",
+    "mocov3nf_lr16t25-qo9qs3j3-ep=last.ckpt",
+    "tlyydhj5/mocov3nf_lr16_gs336_t5-tlyydhj5-ep=last.ckpt"
+    'm4lf6jxv/mocov3nf_lr16_gs540_resize_t5-m4lf6jxv-ep=last.ckpt',
+    "ewnydxom/mocov3nf_lr16_gs540_t0-ewnydxom-ep=last.ckpt",
     # "3aah1qh5/mocov3nf_lr16_gs313x2-3aah1qh5-ep=last.ckpt",
     # 'tl8ynbj4/mocov3nf_lr16_gs540_t15x2-tl8ynbj4-ep=last-stp=last.ckpt',
     # 'ixgzlby3/mocov3nf_lr16_gs224_t15x2-ixgzlby3-ep=last-stp=last.ckpt',

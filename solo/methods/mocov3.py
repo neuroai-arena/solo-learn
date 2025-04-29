@@ -220,3 +220,4 @@ class MoCoV3(BaseMomentumMethod):
         self.log_dict(metrics, on_epoch=True, on_step=True, sync_dist=True)
 
         return contrastive_loss + class_loss
+

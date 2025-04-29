@@ -12,7 +12,9 @@ hydra:
 name: dinov2_imagenet_100_t=0_gs=224
 #pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_16_gs224_t0_lr=001_dpr=01/model_final.pth"
 #pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_gs224_t15_lr=001_dpr=01/model_final.pth"
-pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=01/model_0031434.pth" # model_0031434.pth
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=01/model_0031434.pth" # model_0031434.pth
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=01_new/model_final.pth"
+pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=02_/model_final.pth"
 network_type: teacher
 
 method: "dinov2"

@@ -1,3 +1,9 @@
+# python main_linear.py --config-path scripts/linear_probe/ --config-name moco_resnet_grid.yaml name="mocov3_gs224_t15_ggb3-ImageNet100" ++pretrained_feature_extractor="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/znm3uwli/mocov3_gs224_t15_ggb3-znm3uwli-ep\=last-stp\=last.ckpt"
+# python main_linear.py --config-path scripts/linear_probe/ --config-name moco_resnet_grid.yaml name="mocov3_gs224_t15_ggb1-ImageNet100" ++pretrained_feature_extractor="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/7fbjx70g/mocov3_gs224_t15_ggb1-7fbjx70g-ep\=last-stp\=last.ckpt" ++data.transform_kwargs.global_gaussian_blur.sigma=9.549296585513721
+# python main_linear.py --config-path scripts/linear_probe/ --config-name moco_resnet_grid.yaml name="mocov3_gs224_t15_ggb3-Places365" ++pretrained_feature_extractor="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/znm3uwli/mocov3_gs224_t15_ggb3-znm3uwli-ep\=last-stp\=last.ckpt" ++data.transform_kwargs.global_gaussian_blur.sigma=3.183098861837907
+# python main_linear.py --config-path scripts/linear_probe/ --config-name moco_resnet_grid.yaml name="mocov3_gs224_t15_ggb1_init-ImageNet100" ++pretrained_feature_extractor="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/0wigov03/mocov3_gs224_t15_ggb1_init-0wigov03-ep\=last-stp\=last.ckpt"
+# python main_linear.py --config-path scripts/linear_probe/ --config-name moco_resnet_grid.yaml name="mocov3_gs224_t15_gbb_log_decay-ImageNet100" ++pretrained_feature_extractor="/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/mocov3/eqq56xt3/mocov3_gs224_t15_ggb_log_decay-eqq56xt3-ep=last-stp\=last.ckpt"
+
 defaults:
   - _self_
   - override hydra/hydra_logging: disabled
@@ -18,16 +24,18 @@ backbone:
 method: "mocov3"
 pretrain_method: "mocov3"
 
+
+
 data:
-  dataset: imagenet100_42
+  dataset: "imagenet100_42"
   train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
   val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
   train_backgrounds: [ 's1', 's2', 's3', 's4', 's5', 's6' ]
   val_backgrounds: [ 's7', 's8', 's9', 's10', 's11' ]
   num_workers: 8
-  transform_kwargs:
-    global_gaussian_blur:
-      sigma: 3.183098861837907
+#  transform_kwargs:
+#    global_gaussian_blur:
+#      sigma: 3.183098861837907
 optimizer:
   name: "sgd"
   batch_size: 128
@@ -67,7 +75,8 @@ finetune: False
 
 grid:
   enabled: True
-  lr: [ 0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2 ]
+#  lr: [  0.1,  0.4,  1.6,  ]
+  lr: [  0.01, 0.05, 0.1, 0.2, 0.4, 0.8,  1.6, 3.2 ]
   layer_names: [ "maxpool", "layer1", "layer2", "layer3", "layer4" ]
 
 # overwrite PL stuff

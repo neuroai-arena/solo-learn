@@ -43,13 +43,13 @@ _N_CLASSES_PER_DATASET = {
     "STL10_FG": 10,
     "Places365_h5": 365,
     "SUN397": 397,
+    "SUN397_h5": 397,
     "Caltech101": 101,
     "imagenet1pct_42": 1000,
     "imagenet10pct_42": 1000,
     "toybox": 348,
     'core50_bg': 11,
     'COIL100': 100
-
 }
 
 _SUPPORTED_DATASETS = [
@@ -75,6 +75,7 @@ _SUPPORTED_DATASETS = [
     "STL10",
     "Places365_h5",
     "SUN397",
+    "SUN397_h5",
     "Caltech101",
     "imagenet1pct_42",
     "imagenet10pct_42",

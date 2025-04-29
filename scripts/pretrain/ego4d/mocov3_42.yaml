@@ -1,12 +1,9 @@
 defaults:
   - _self_
   - augmentations: asymmetric.yaml
-  - wandb: ts_aubret.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
-wandb:
-  group: "mocov3-rn50"
 
 # disable hydra outputs
 hydra:
@@ -14,7 +11,8 @@ hydra:
   run:
     dir: .
 
-name: "mocov3nf_lr16_gsRND_t15"
+seed: 0
+name: "mocov3nf_lr16_gs540_t0"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -33,8 +31,8 @@ data:
   format: "h5"
   num_workers: 8
   dataset_kwargs:
-    gaze_size: random
-    time_window: 15
+    gaze_size: 540
+    time_window: 0
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
     resize_gs: False  # resize gaze to 224 before applying transform
 optimizer:
@@ -54,6 +52,15 @@ checkpoint:
   keep_prev: True
   every_n_iter: 5000
 auto_resume:
+  enabled: False
+wandb:
+  enabled: True
+  entity: "aaubret"
+  project: "EgocentricVision"
+  group: "mocov3-rn50"
+  job_type: "train"
+
+gaussian_blur_decay_clb:
   enabled: False
 
 knn_clb:
@@ -79,4 +86,4 @@ no_validation: True
 limit_val_batches: 0
 num_sanity_val_steps: 0
 val_check_interval: 5000
-log_every_n_steps: 5000
+log_every_n_steps: 50

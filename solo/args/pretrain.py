@@ -117,6 +117,29 @@ def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     return cfg
 
 
+def add_and_assert_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
+    """Adds specific default values/checks for KNN callback config.
+
+    Args:
+        cfg (omegaconf.DictConfig): DictConfig object.
+
+    Returns:
+        omegaconf.DictConfig: same as the argument, used to avoid errors.
+    """
+
+    cfg.gaussian_blur_decay_clb.enabled = omegaconf_select(cfg, "gaussian_blur_decay_clb.enabled", False)
+    cfg.gaussian_blur_decay_clb.initial_sigma = omegaconf_select(cfg, "gaussian_blur_decay_clb.initial_sigma", 10.0)
+    cfg.gaussian_blur_decay_clb.final_sigma = omegaconf_select(cfg, "gaussian_blur_decay_clb.final_sigma", 0.0)
+    cfg.gaussian_blur_decay_clb.decay_steps = omegaconf_select(cfg, "gaussian_blur_decay_clb.decay_steps", 0.1)
+
+    assert 0.0 < cfg.gaussian_blur_decay_clb.decay_steps <= 1.0, "decay_steps must be between 0 and 1"
+    assert cfg.gaussian_blur_decay_clb.initial_sigma > cfg.gaussian_blur_decay_clb.final_sigma, \
+        "initial_sigma must be greater than final_sigma"
+    assert cfg.gaussian_blur_decay_clb.initial_sigma > 0.0, "initial_sigma must be greater than 0"
+    assert cfg.gaussian_blur_decay_clb.final_sigma >= 0.0, "final_sigma must be greater than or equal to 0"
+    return cfg
+
+
 def add_and_assert_wandb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     """Adds specific default values/checks for wandb config.
 
@@ -164,6 +187,9 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     # default values for knn_clb
     cfg = add_and_assert_knn_clb_cfg(cfg)
+
+    # default values for all other clb
+    cfg = add_and_assert_clb_cfg(cfg)
 
     # default values for dali
     if _dali_available:

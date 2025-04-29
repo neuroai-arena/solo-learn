@@ -12,14 +12,14 @@ hydra:
     dir: .
 
 
-name: "mocov3_vit_gs540_t15_avgpool"
+name: "mocov3_vit_gs540_t0"
 method: "mocov3"
 backbone:
   name: "vit_base"
   kwargs:
     patch_size: 16
-    global_pool: 'avg'
-#    class_token: True
+    global_pool: 'token'
+    class_token: True
 method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
@@ -36,7 +36,7 @@ data:
   num_workers: 8
   dataset_kwargs:
     gaze_size: 540
-    time_window: 15
+    time_window: 0
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
     resize_gs: False  # resize gaze to 224 before applying transform
 optimizer:
@@ -69,6 +69,8 @@ knn_clb:
   perform_on_validation: False
   perform_every_n_batches: 0.05 # perform every 5% of the training batches
   verbose: True
+gaussian_blur_decay_clb:
+  enabled: False
 
 # overwrite PL stuff
 max_epochs: 1

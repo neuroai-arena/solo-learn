@@ -17,7 +17,7 @@ backbone:
   name: "vit_base"
   kwargs:
     patch_size: 16
-#    global_pool: 'avg'
+    global_pool: 'token'
 method: "mocov3"
 pretrain_method: "mocov3"
 data:
@@ -46,6 +46,7 @@ checkpoint:
   save_last: True
 auto_resume:
   enabled: False
+  max_hours: 300
 early_stopping:
   enabled: False
   patience: 5
@@ -56,7 +57,7 @@ wandb:
   entity: "aaubret"
   project: "EgocentricVision"
   group: "mocov3-vit"
-  job_type: "linear_probe_grid"
+  job_type: "linear_probe_grid_v2"
   offline: False
 
 
@@ -67,9 +68,10 @@ finetune: False
 
 grid:
   enabled: True
-  lr: [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5]
-  use_avgpool: [True]
-  use_cls_token: [True]
+#  lr: [ 0.1, 0.3, 0.5, 0.7,0.9,  1.0,1.1, 1.3, 1.5, 1.7, 1.9, 2.0, 2.5 , 3.0]
+  lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
+  use_avgpool: [True, False]
+  use_cls_token: [True, False]
   use_n_blocks: [1]
 
 # overwrite PL stuff

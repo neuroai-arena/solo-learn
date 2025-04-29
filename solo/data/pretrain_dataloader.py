@@ -30,6 +30,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
+from torchvision.transforms import Compose
 
 from solo.data.custom.ego4d import Ego4d
 from solo.data.custom.imagenet import ImgnetDataset
@@ -78,6 +79,49 @@ class CustomDatasetWithoutLabels(Dataset):
         return len(self.images)
 
 
+class DecayGaussianBlur:
+    def __init__(self, sigma:float):
+        """Gaussian blur as a callable object.
+
+        Args:
+            sigma (Sequence[float]): range to sample the radius of the gaussian blur filter.
+                Defaults to [0.1, 2.0].
+        """
+        from multiprocessing import Value
+        import ctypes
+
+        self.sigma = Value(ctypes.c_float, sigma)
+
+    def set_sigma(self, value):
+        """Sets the sigma value for the gaussian blur.
+
+        Args:
+            value (float): sigma value.
+        """
+        self.sigma.value = value
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return f'GaussianBlur(sigma={self.sigma})'
+
+    def __call__(self, img: Image) -> Image:
+        """Applies gaussian blur to an input image.
+
+        Args:
+            img (Image): an image in the PIL.Image format.
+
+        Returns:
+            Image: blurred image.
+        """
+        sigma = self.sigma.value
+        if sigma <= 0:
+            return img
+
+        img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return img
+
 class GaussianBlur:
     def __init__(self, sigma: Sequence[float] = None):
         """Gaussian blur as a callable object.
@@ -92,6 +136,12 @@ class GaussianBlur:
 
         self.sigma = sigma
 
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return f'GaussianBlur(sigma={self.sigma})'
+
     def __call__(self, img: Image) -> Image:
         """Applies gaussian blur to an input image.
 
@@ -101,10 +151,15 @@ class GaussianBlur:
         Returns:
             Image: blurred image.
         """
+
         if not isinstance(self.sigma, (float, int)):
             sigma = random.uniform(self.sigma[0], self.sigma[1])
         else:
             sigma = self.sigma
+
+        if sigma <= 0:
+            return img
+
         img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
         return img
 
@@ -160,8 +215,34 @@ class NCropAugmentation:
 
 
 class FullTransformPipeline:
-    def __init__(self, transforms: Callable) -> None:
+    def __init__(self, transforms: List[Callable]) -> None:
         self.transforms = transforms
+
+    @staticmethod
+    def get_transforms(cls: type, transforms: List[Callable]) -> List[Callable]:
+        """Recursively checks a list of transforms and returns a specific class.
+
+        Args:
+            cls (Type): class of the transformation.
+            transforms (List[Callable]): list of transformations.
+
+        Returns:
+            Optional[Callable]: transformation of the specific class.
+        """
+        matched = []
+        if isinstance(transforms, Compose):
+            transforms = transforms.transforms
+
+        for t in transforms:
+            if isinstance(t, cls):
+                matched.append(t)
+
+            if hasattr(t, 'transform'):
+                matched.extend(FullTransformPipeline.get_transforms(cls, t.transform))
+            if hasattr(t, 'transforms'):
+                matched.extend(FullTransformPipeline.get_transforms(cls, t.transforms))
+
+        return matched
 
     def __call__(self, x: Image, x2: Image = None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
@@ -236,7 +317,7 @@ def build_transform_pipeline(dataset, cfg):
 
     if hasattr(cfg, "global_gaussian_blur") and cfg.global_gaussian_blur.enabled:
         print("ADDING global_gaussian_blur wiht sigma", cfg.global_gaussian_blur.sigma)
-        augmentations.append(GaussianBlur(sigma=cfg.global_gaussian_blur.sigma))
+        augmentations.append(DecayGaussianBlur(sigma=cfg.global_gaussian_blur.sigma))
 
     if cfg.rrc.enabled:
         augmentations.append(
@@ -292,7 +373,7 @@ def build_transform_pipeline(dataset, cfg):
 
 
 def prepare_n_crop_transform(
-    transforms: List[Callable], num_crops_per_aug: List[int]
+        transforms: List[Callable], num_crops_per_aug: List[int]
 ) -> NCropAugmentation:
     """Turns a single crop transformation to an N crops transformation.
 
@@ -313,14 +394,14 @@ def prepare_n_crop_transform(
 
 
 def prepare_datasets(
-    dataset: str,
-    transform: Callable,
-    train_data_path: Optional[Union[str, Path]] = None,
-    data_format: Optional[str] = "image_folder",
-    no_labels: Optional[Union[str, Path]] = False,
-    download: bool = True,
-    data_fraction: float = -1.0,
-    **dataset_kwargs
+        dataset: str,
+        transform: Callable,
+        train_data_path: Optional[Union[str, Path]] = None,
+        data_format: Optional[str] = "image_folder",
+        no_labels: Optional[Union[str, Path]] = False,
+        download: bool = True,
+        data_fraction: float = -1.0,
+        **dataset_kwargs
 ) -> Dataset:
     """Prepares the desired dataset.
 
@@ -360,9 +441,10 @@ def prepare_datasets(
     elif dataset in ["ego4d"]:
         train_dataset = dataset_with_index(Ego4d)(train_data_path, transform, **dataset_kwargs)
     elif dataset == "tiny":
-        train_dataset = dataset_with_index(TinyDataset)(train_data_path,split="train", transform=transform)
+        train_dataset = dataset_with_index(TinyDataset)(train_data_path, split="train", transform=transform)
     elif dataset in ["imagenet2", "imagenet2_100"]:
-        train_dataset = dataset_with_index(ImgnetDataset)(train_data_path, "train", transform, dataset=="imagenet2_100")
+        train_dataset = dataset_with_index(ImgnetDataset)(train_data_path, "train", transform,
+                                                          dataset == "imagenet2_100")
     elif dataset in ["imagenet", "imagenet100"]:
         if data_format == "h5":
             assert _h5_available
@@ -402,7 +484,7 @@ def prepare_datasets(
 
 
 def prepare_dataloader(
-    train_dataset: Dataset, batch_size: int = 64, num_workers: int = 4, sampler = None, shuffle=True
+        train_dataset: Dataset, batch_size: int = 64, num_workers: int = 4, sampler=None, shuffle=True
 ) -> DataLoader:
     """Prepares the training dataloader for pretraining.
     Args:

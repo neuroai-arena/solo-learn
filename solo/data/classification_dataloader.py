@@ -295,6 +295,7 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
         "STL10_FG": stl_pipeline,
         "Places365_h5": imagenet_pipeline,
         "SUN397": imagenet_pipeline,
+        "SUN397_h5": imagenet_pipeline,
         "imagenet1pct_42": imagenet_pipeline,
         "imagenet10pct_42": imagenet_pipeline,
         "toybox": toybox_pipeline,
@@ -359,9 +360,9 @@ def prepare_datasets(
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
         "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
-        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
-        "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
-        "STL10_FG"
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5",
+        "SUN397", "SUN397_h5", "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat",
+        "COIL100", "STL10_FG_224", "STL10_FG"
     ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
@@ -420,6 +421,10 @@ def prepare_datasets(
         train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'Places365', transform=T_train,
                                                 split="train")
         val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'Places365', transform=T_val, split="val")
+    elif dataset in ["SUN397_h5"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'SUN397', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'SUN397', transform=T_val, split="test")
     elif dataset in ["COIL100"]:
         train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'coil100', transform=T_train,
                                                 split="train")
