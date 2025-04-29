@@ -168,6 +168,9 @@ class AAMoCoV3(MoCoV3):
             "train_contrastive_loss": contrastive_loss,
             "train_aa_constrastive_loss": aa_contrastive_loss
         }
+        for i in range(action.shape[1]):
+            metrics[f"a{i}"] = action[:,i].mean()
+
         self.log_dict(metrics, on_epoch=True, on_step=True, sync_dist=True)
 
 

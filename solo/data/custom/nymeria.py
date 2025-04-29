@@ -18,7 +18,7 @@ from solo.data.foveation import foveation
 
 class Nymeria(Dataset):
     gaze_sizes = (112, 224, 336, 448, 540)
-    def __init__(self, data_root, transform,gaze_size=224, time_window=3, center_crop=False, resize_gs=False, resolution=512, fps=1, **kwargs):
+    def __init__(self, data_root, transform,gaze_size=224, time_window=3, center_crop=False, resize_gs=False, resolution=512, fps=1,  normalize=False, version=1, **kwargs):
         super().__init__()
         self.data_root = data_root
         self.transform = transform
@@ -27,6 +27,8 @@ class Nymeria(Dataset):
         self.gaze_size = gaze_size
         self.resize_gs = resize_gs
         self.resolution = resolution
+        self.normalize = normalize
+        self.version = version
         self.adj_resolution = int(self.resolution*0.9)
 
 
@@ -85,11 +87,11 @@ class Nymeria(Dataset):
         bef_trans = row_before.loc[["tx", "ty", "tz"]].values
         aft_trans = row_after.loc[["tx", "ty", "tz"]].values
 
-        # bef_rot = bef_rot / np.linalg.norm(bef_rot)
-        # aft_rot = aft_rot / np.linalg.norm(aft_rot)
-
         assert np.abs(np.linalg.norm(bef_rot) - 1) < 0.05
         assert np.abs(np.linalg.norm(aft_rot) -1) < 0.05
+
+        if self.version == 2:
+            return self.get_action_v2(bef_rot, aft_rot, bef_trans, aft_trans, gaze_before, gaze_after)
 
         camera_rot = self.quaternion_multiply((aft_rot[0],-aft_rot[1],-aft_rot[2],-aft_rot[3]), (bef_rot[0],bef_rot[1],bef_rot[1],bef_rot[3])).squeeze()
         camera_rot = np.concatenate((camera_rot[1:4], camera_rot[0:1]), axis=0)
@@ -98,17 +100,42 @@ class Nymeria(Dataset):
         translation_rot = np.transpose(scipy.spatial.transform.Rotation.from_quat(quat=camera_rot).as_matrix())
         translation = np.matmul(translation_rot, translation)
 
-        gaze_mouvement = np.array(gaze_after) - np.array(gaze_before)
+        gaze_movement = np.array(gaze_after) - np.array(gaze_before)
+        gaze_movement /= self.adj_resolution - self.gaze_size
 
         action = torch.tensor(np.concatenate(
-            (gaze_mouvement.astype(np.float32),
+            (gaze_movement.astype(np.float32),
             camera_rot.astype(np.float32),
             translation.astype(np.float32)), axis=0
         ))
         return action
 
+    def compute_relative_pose(self, R1, t1, R2, t2):
+        # Compute relative rotation
+        R_rel = R2 @ R1.T  # or np.dot(R2, R1.T)
 
+        # Compute relative translation
+        t_rel = t2 - R_rel @ t1
 
+        return R_rel, t_rel
+
+    def get_action_v2(self, r1, r2, t1, t2, g1, g2):
+        r1 = scipy.spatial.transform.Rotation.from_quat(quat=r1).as_matrix()
+        r2 = scipy.spatial.transform.Rotation.from_quat(quat=r2).as_matrix()
+
+        r_rel, t_rel = self.compute_relative_pose(r1, t1, r2, t2)
+
+        r_rel = scipy.spatial.transform.Rotation.from_matrix(matrix=r_rel).as_quat()
+        gaze_movement = np.array(g2) - np.array(g1)
+        if self.normalize:
+            gaze_movement /= self.adj_resolution - self.gaze_size
+
+        action = torch.tensor(np.concatenate(
+            (gaze_movement.astype(np.float32),
+            r_rel.astype(np.float32),
+            t_rel.astype(np.float32)), axis=0
+        ))
+        return action
 
     def __getitem__(self, idx):
 
