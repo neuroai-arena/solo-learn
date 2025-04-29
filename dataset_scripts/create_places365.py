@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
             image_dataset = h5_file.create_dataset(f"images",
                                                    shape=(len(dataset),),
-                                                   dtype=h5py.vlen_dtype(np.dtype('uint8')))
+                                                   )
             target_dataset = h5_file.create_dataset(f"targets",
                                                     shape=(len(dataset),),
                                                     dtype=np.int32)

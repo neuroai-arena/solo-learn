@@ -512,13 +512,13 @@ class BaseMethod(pl.LightningModule):
 
         X = [X] if isinstance(X, torch.Tensor) else X
         # check that we received the desired number of crops
-        assert len(X) == self.num_crops
+        # assert len(X) == self.num_crops
 
         outs = [self.base_training_step(x, targets) for x in X[: self.num_large_crops]]
         outs = {k: [out[k] for out in outs] for k in outs[0].keys()}
 
         if self.multicrop:
-            multicrop_outs = [self.multicrop_forward(x) for x in X[self.num_large_crops :]]
+            multicrop_outs = [self.multicrop_forward(x) for x in X[self.num_large_crops :self.num_crops]]
             for k in multicrop_outs[0].keys():
                 outs[k] = outs.get(k, []) + [out[k] for out in multicrop_outs]
 

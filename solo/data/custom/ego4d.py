@@ -5,11 +5,13 @@ import random
 
 import h5py
 import numpy as np
+import torch
 import torchvision
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
 
+from solo.data.cortical_magnification import radial_quad_isotrop_gridfun, img_cortical_magnif_tsr
 from solo.data.foveation import foveation
 
 
@@ -28,6 +30,7 @@ class Ego4d(Dataset):
         self.gaze_size = gaze_size
         self.resize_gs = resize_gs
         self.foveation = foveation
+
 
         self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95.h5"), "r")
         self.dataset = h5py.File(os.path.join(self.data_root, f"dataset_all95.h5"), "r")["data"]
@@ -68,18 +71,29 @@ class Ego4d(Dataset):
         binimg = self.hdf5_file.get(partition).get("frames").get(f"images540_{str(number)}")[index]
         img = Image.open(io.BytesIO(binimg))
 
-
-
         if self.center_crop:
             img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
-        elif gaze_size == 540:
-            if self.resize_gs:
-                img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
+        elif self.foveation and self.foveation.name == "cm_center":
+            imgtsr = torchvision.transforms.functional.to_tensor(img)
+            img = img_cortical_magnif_tsr(imgtsr, (270, 270), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.foveation.fov, K=self.foveation.K), demo=False)
+            img = torchvision.transforms.functional.to_pil_image(img)
+
+
+            # img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
+
+        elif self.foveation and self.foveation.name == "cm":
+            imgtsr = torchvision.transforms.functional.to_tensor(img)
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
+            img = img_cortical_magnif_tsr(imgtsr, (gaze_y, gaze_x), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=20, K=20))
         elif self.foveation:
             ### We extract the gaze location in the image
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
-            img = foveation(img, (gaze_y, gaze_x), **self.foveation)
+            img = foveation(img, (gaze_y, gaze_x))
             img = torchvision.transforms.functional.to_pil_image(img)
+        elif gaze_size == 540:
+            if self.resize_gs:
+                img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
+
         elif gaze_size == "random":
             gaze_size = random.choice(self.gaze_sizes)
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]

@@ -175,9 +175,9 @@ def setup_linear_classifiers_only_lr(
 ) -> Union[AllClassifiers, List[Dict[str, Any]]]:
     linear_classifiers_dict = nn.ModuleDict()
     optim_param_groups = []
-    for _lr in learning_rates:
-        lr = scale_lr(_lr, batch_size, devices)
+    for _lr in sorted(learning_rates):
 
+        lr = scale_lr(_lr, batch_size, devices)
         out_dim = sample_output.shape[-1]
 
         linear_classifier = LinearClassifier(out_dim, num_classes=num_classes)

@@ -3,7 +3,10 @@ import sys
 import pandas
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
+
 sys.path.append("../..")
+
+from solo.data.cortical_magnification import img_cortical_magnif_tsr, radial_quad_isotrop_gridfun
 
 import torch
 import torchvision.utils
@@ -30,7 +33,7 @@ class Ego4d(Dataset):
     readded = [71,56,67,74]
     def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, **kwargs):
         super().__init__()
-        assert gaze_size in  [114, 160, 224, 313, 440, 540]
+        # assert gaze_size in  [114, 160, 224, 313, 440, 540]
 
         self.data_root = data_root
         self.transform = transform
@@ -64,19 +67,40 @@ class Ego4d(Dataset):
         img = Image.open(io.BytesIO(binimg))
 
 
-
         if self.center_crop:
             img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
+        elif self.foveation and self.foveation.name == "cm_center":
+            imgtsr = torchvision.transforms.functional.to_tensor(img)
+            img = img_cortical_magnif_tsr(imgtsr, (270, 270), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=self.foveation.fov, K=self.foveation.K))
+            img = torchvision.transforms.functional.to_pil_image(img)
+            img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
+        elif self.foveation and self.foveation.name == "cm":
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
+            img = img_cortical_magnif_tsr(img, (gaze_y, gaze_x), lambda img2, pnt: radial_quad_isotrop_gridfun(img2, pnt, fov=20, K=20))
+        elif self.foveation:
+            ### We extract the gaze location in the image
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
+            img = foveation(img, (gaze_y, gaze_x))
+            img = torchvision.transforms.functional.to_pil_image(img)
         elif gaze_size == 540:
             if self.resize_gs:
                 img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
-        elif self.foveation:
-            ### We extract the gaze location in the image
-            imtsr = torchvision.transforms.functional.to_tensor(img)
+
+        elif gaze_size == "random":
+            gaze_size = random.choice(self.gaze_sizes)
             gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
-            img = foveation(img, (gaze_y, gaze_x), **self.foveation)
-            img = torchvision.transforms.functional.to_pil_image(img)
+            ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
+            gaze_x += - max(0, gaze_x + gaze_size // 2 - 540) - min(0, gaze_x - gaze_size // 2)
+            gaze_y += - max(0, gaze_y + gaze_size // 2 - 540) - min(0, gaze_y - gaze_size // 2)
+
+            img = torchvision.transforms.functional.crop(img,
+                                                         gaze_y - gaze_size // 2,
+                                                         gaze_x - gaze_size // 2,
+                                                         gaze_size,
+                                                         gaze_size,
+                                                         )
         else:
+            gaze_x, gaze_y = row[self.gaze_index[0]], row[self.gaze_index[1]]
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
             gaze_x += - max(0,gaze_x + gaze_size//2 - 540) - min(0, gaze_x - gaze_size//2)
             gaze_y += - max(0,gaze_y + gaze_size//2 - 540) - min(0, gaze_y - gaze_size//2)
@@ -125,7 +149,7 @@ def build_transform_pipeline():
     augmentations.append(
         transforms.RandomResizedCrop(
             224,
-            scale=(0.2, 1),
+            scale=(0.99, 1),
             interpolation=transforms.InterpolationMode.BICUBIC,
         ),
     )
@@ -162,7 +186,13 @@ def build_transform_pipeline():
 
 t =NCropAugmentation(build_transform_pipeline(), 2)
 # t= NCropAugmentation( transforms.Compose([transforms.CenterCrop((540,540))]), 2)
-dataset_v1 = Ego4d("/scratch/autolearn/aubret/ego4dv2/", t, gaze_size=224, time_window=0, foveation={"kerW_coef":0.04})
+# dataset_v1 = Ego4d("/scratch/autolearn/aubret/ego4dv2/", t, gaze_size=224, time_window=0, foveation={"kerW_coef":0.04})
+class fov():
+    name = "cm_center"
+    fov = 30
+    K = 1
+f = fov()
+dataset_v1 = Ego4d("/scratch/autolearn/aubret/ego4dv2/", t, gaze_size=540, time_window=0, foveation=f)
 dataloader_v1 = DataLoader(dataset_v1, shuffle=False, batch_size=1, num_workers=1)
 
 torch.manual_seed(0)
@@ -177,5 +207,5 @@ for i, i1 in enumerate(itv1):
     torchvision.utils.save_image(i1[0][0], f"/scratch/autolearn/aubret/ego4d/samples_fov/{i}_1.png")
     torchvision.utils.save_image(i1[0][1], f"/scratch/autolearn/aubret/ego4d/samples_fov/{i}_2.png")
     # torchvision.utils.save_image(i2[0][0], f"/scratch/autolearn/aubret/ego4d/samplesv2/{i}.png")
-    if i > 30:
+    if i > 10:
         break

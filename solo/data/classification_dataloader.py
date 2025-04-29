@@ -31,6 +31,7 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
+from solo.data.cortical_magnification import CorticalMagnification, CenterCropBig
 from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42, ImageNetS
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
@@ -86,7 +87,7 @@ def build_custom_pipeline():
     return pipeline
 
 
-def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
+def prepare_transforms(dataset: str, **aug_kwargs) -> Tuple[nn.Module, nn.Module]:
     """Prepares pre-defined train and test transformation pipelines for some datasets.
 
     Args:
@@ -167,6 +168,24 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
         ),
     }
 
+    coil100_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=128, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
+
     imagenet_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -185,6 +204,7 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
             ]
         )
     }
+
 
     core50_pipeline = {
         "T_train": transforms.Compose(
@@ -278,6 +298,7 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
         "imagenet_42": imagenet_pipeline,
         "imagenet100_42": imagenet_pipeline,
         "ego4d": imagenet_pipeline,
+        "nymeria": imagenet_pipeline,
         "tiny": tiny_pipeline,
         'core50': core50_pipeline,
         'core50_bg': core50_pipeline,
@@ -288,6 +309,7 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
         'Food101': imagenet_pipeline,
         'OxfordIIITPet': imagenet_pipeline,
         'Places365': imagenet_pipeline,
+        'COIL100': coil100_pipeline,
         'StanfordCars': imagenet_pipeline,
         "STL10": stl_pipeline,
         "STL10_224": stl_pipeline_224,
@@ -300,7 +322,6 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
         "imagenet10pct_42": imagenet_pipeline,
         "toybox": toybox_pipeline,
         "feat": imagenet_pipeline,  # this is a placeholder
-        'COIL100': coil100_pipeline,
     }
 
     assert dataset in pipelines
@@ -309,13 +330,27 @@ def prepare_transforms(dataset: str, **kwargs) -> Tuple[nn.Module, nn.Module]:
     T_train = pipeline["T_train"]
     T_val = pipeline["T_val"]
 
-    if kwargs.get("global_gaussian_blur", None) is not None:
-        sigma = kwargs["global_gaussian_blur"]["sigma"]
+    if aug_kwargs.get("global_gaussian_blur", None) is not None:
+        sigma = aug_kwargs["global_gaussian_blur"]["sigma"]
         T_train.transforms.insert(0, GaussianBlur(sigma=sigma))
         T_val.transforms.insert(0, GaussianBlur(sigma=sigma))
 
+
+    if aug_kwargs and aug_kwargs.get("cm").get("enabled"):
+        fov, K = aug_kwargs.get("cm").get("fov"), aug_kwargs.get("cm").get("K")
+
+
+        # transforms.RandomResizedCrop(size=224, interpolation=transforms.InterpolationMode.BICUBIC),
+        #We create a squared image, resize it to 540 (like ego4d) to apply cortical magnification.
+        T_train.transforms.pop(-2)
+        T_val.transforms.pop(-2)
+
+        T_train.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_train.transforms
+        T_val.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_val.transforms
+
     print("T_train", T_train)
     print("T_val", T_val)
+
     return T_train, T_val
 
 
@@ -360,6 +395,9 @@ def prepare_datasets(
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
         "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
+        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
+        "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
+        "STL10_FG", "nymeria"
         'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5",
         "SUN397", "SUN397_h5", "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat",
         "COIL100", "STL10_FG_224", "STL10_FG"
@@ -436,7 +474,7 @@ def prepare_datasets(
     elif dataset in ["tiny"]:
         train_dataset = TinyDataset(train_data_path, "train", T_train)
         val_dataset = TinyDataset(val_data_path, "val", T_val)
-    elif dataset in ["ego4d"]:
+    elif dataset in ["ego4d", "nymeria"]:
         train_dataset = ImgnetDataset(val_data_path, "val", T_val,
                                       True)  # ImgnetDataset(train_data_path, "train", T_train, True)
         val_dataset = ImgnetDataset(val_data_path, "val", T_val, True)

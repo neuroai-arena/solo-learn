@@ -34,6 +34,7 @@ from torchvision.transforms import Compose
 
 from solo.data.custom.ego4d import Ego4d
 from solo.data.custom.imagenet import ImgnetDataset
+from solo.data.custom.nymeria import Nymeria
 from solo.data.custom.tinyimgnet import TinyDataset
 
 try:
@@ -197,7 +198,7 @@ class NCropAugmentation:
         self.transform = transform
         self.num_crops = num_crops
 
-    def __call__(self, x: Image, x2: Image = None) -> List[torch.Tensor]:
+    def __call__(self, x: Image, x2: Image = None, action=None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
 
         Args:
@@ -206,6 +207,7 @@ class NCropAugmentation:
         Returns:
             List[torch.Tensor]: an image in the tensor format.
         """
+
         if x2 is not None:
             return [self.transform(random.choice([x, x2])) for _ in range(self.num_crops)]
         return [self.transform(x) for _ in range(self.num_crops)]
@@ -244,7 +246,7 @@ class FullTransformPipeline:
 
         return matched
 
-    def __call__(self, x: Image, x2: Image = None) -> List[torch.Tensor]:
+    def __call__(self, x: Image, x2: Image = None, action = None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
 
         Args:
@@ -255,15 +257,18 @@ class FullTransformPipeline:
         """
         out = []
         if x2 is not None:
+            # t2 = len(self.transforms) - 1
             out.extend(self.transforms[0](x))
             out.extend(self.transforms[1](x2))
             for t in self.transforms[2:]:
                 # out.extend(transform(random.choice([x, x2])))
                 out.extend(t(x, x2))
-            return out
+        else:
+            for transform in self.transforms:
+                out.extend(transform(x))
 
-        for transform in self.transforms:
-            out.extend(transform(x))
+        if action is not None:
+            out.append(action)
         return out
 
     def __repr__(self) -> str:
@@ -307,6 +312,7 @@ def build_transform_pipeline(dataset, cfg):
         "imagenet2_100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "imagenet2": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "ego4d": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+        "nymeria": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
     }
 
     mean, std = MEANS_N_STD.get(
@@ -440,6 +446,8 @@ def prepare_datasets(
         )
     elif dataset in ["ego4d"]:
         train_dataset = dataset_with_index(Ego4d)(train_data_path, transform, **dataset_kwargs)
+    elif dataset in ["nymeria"]:
+        train_dataset = dataset_with_index(Nymeria)(train_data_path, transform, **dataset_kwargs)
     elif dataset == "tiny":
         train_dataset = dataset_with_index(TinyDataset)(train_data_path, split="train", transform=transform)
     elif dataset in ["imagenet2", "imagenet2_100"]:
