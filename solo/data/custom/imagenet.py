@@ -81,7 +81,7 @@ class ImgNetDataset_42(H5ClassificationDataset):
             split: str = "train",
             subset: Optional[str] = None
     ):
-        super().__init__(root, transform, split, driver="core" if split == "train" and subset is not None else None)
+        super().__init__(root, transform, split, driver="core" if split == "train" and subset in ["1pct", "10pct", "imgnet100"] else None)
         if subset == '1pct' and split == "train":
             subset_df = pd.read_csv("solo/data/dataset_subset/imagenet_1percent.txt", names=['filename'])
             self.mapper = self.mapper.query("filename.isin(@subset_df.filename)").copy().reset_index(drop=True)
@@ -90,12 +90,11 @@ class ImgNetDataset_42(H5ClassificationDataset):
             subset_df = pd.read_csv("solo/data/dataset_subset/imagenet_10percent.txt", names=['filename'])
             self.mapper = self.mapper.query("filename.isin(@subset_df.filename)").copy().reset_index(drop=True)
             print("Using IN 10%")
-        elif subset == "imgnet100":
+        elif subset in ["imgnet100", "imgnet100_im"]:
             with open(self.root / 'imagenet100_classes.txt') as f:
                 imgnet100_classes = sorted(f.readline().strip().split())
             imgnet100_class_wn_2_class_index = {class_wn: class_index for class_index, class_wn in
                                                 enumerate(imgnet100_classes)}
-
             self.mapper = self.mapper.query('wn_name in @imgnet100_classes').reset_index(drop=True)
             self.mapper['target'] = self.mapper['wn_name'].apply(lambda x: imgnet100_class_wn_2_class_index[x])
 

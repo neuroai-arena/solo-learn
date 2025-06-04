@@ -24,6 +24,7 @@ import torch
 import torch.nn as nn
 from solo.losses.mocov3 import mocov3_loss_func
 from solo.methods.base import BaseMomentumMethod
+from solo.utils.misc import omegaconf_select
 from solo.utils.momentum import initialize_momentum_params
 
 
@@ -46,18 +47,19 @@ class MoCoV3(BaseMomentumMethod):
         proj_hidden_dim: int = cfg.method_kwargs.proj_hidden_dim
         proj_output_dim: int = cfg.method_kwargs.proj_output_dim
         pred_hidden_dim: int = cfg.method_kwargs.pred_hidden_dim
+        cfg.method_kwargs.layers = omegaconf_select(cfg, "method_kwargs.layers", 2)
 
         if "resnet" in self.backbone_name:
             # projector
             self.projector = self._build_mlp(
-                2,
+                cfg.method_kwargs.layers,
                 self.features_dim,
                 proj_hidden_dim,
                 proj_output_dim,
             )
             # momentum projector
             self.momentum_projector = self._build_mlp(
-                2,
+                cfg.method_kwargs.layers,
                 self.features_dim,
                 proj_hidden_dim,
                 proj_output_dim,

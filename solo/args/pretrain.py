@@ -71,7 +71,7 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
     cfg.debug_augmentations = omegaconf_select(cfg, "debug_augmentations", False)
     cfg.data.dataset_kwargs = omegaconf_select(cfg, "data.dataset_kwargs", {})
-
+    cfg.data.same_augmentations = omegaconf_select(cfg, "data.same_augmentations", False)
     return cfg
 
 
@@ -115,6 +115,10 @@ def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
             assert cfg.knn_clb.perform_every_n_batches < 1, "perform_every_n_batches must be less than 1"
 
     cfg.knn_clb.verbose = omegaconf_select(cfg, "knn_clb.verbose", False)
+    cfg.knn_clb.transform_kwargs = omegaconf_select(cfg, "knn_clb.transform_kwargs", None)
+    cfg.knn_clb.clone = omegaconf_select(cfg, "knn_clb.clone", False)
+    if "vit" in cfg.backbone.name and cfg.backbone.kwargs.global_pool == "token":
+        cfg.knn_clb.clone = True
 
     return cfg
 

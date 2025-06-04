@@ -11,32 +11,24 @@ hydra:
   run:
     dir: .
 
-name: "aamocov3-nymeria"
-method: "aamocov3"
+name: "simclr-nymeria"
+method: "simclr"
 backbone:
   name: "resnet50"
 method_kwargs:
   proj_hidden_dim: 4096
-  proj_output_dim: 256
-  pred_hidden_dim: 4096
-  temperature: 0.2
-  aa_layers: 2
-  aa_hidden_dim: 4096
-  aa_weight: 1
-  aa_temperature: 0.2
-momentum:
-  base_tau: 0.996
-  final_tau: 0.996
+  proj_output_dim: 128
+  temperature: 0.1
 data:
   dataset: nymeria
   train_path: "/scratch_shared/aubret/nymeria/"
   val_path: None
   format: "h5"
-  num_workers: 4
+  num_workers: 8
   dataset_kwargs:
     gaze_size: 224
     time_window: 3
-    center_crop: False #To compare gaze crop with a center crop with gaze size 540
+    center_crop: False #To compar e gaze crop with a center crop with gaze size 540
     resolution: 512
     fps: 1
 optimizer:
@@ -72,7 +64,6 @@ knn_clb:
   train_path: /home/aubret/
   format: h5
   freq_epochs: 5
-
 
 # overwrite PL stuff
 max_epochs: 50

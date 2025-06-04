@@ -17,15 +17,13 @@ from solo.data.foveation import foveation
 
 
 class Nymeria(Dataset):
-    gaze_sizes = (112, 224, 336, 448, 540)
-    def __init__(self, data_root, transform,gaze_size=224, time_window=3, center_crop=False, resize_gs=False, resolution=512, fps=1,  normalize=False, version=1, **kwargs):
+    def __init__(self, data_root, transform,gaze_size=224, time_window=3, center_crop=False, resolution=512, fps=1,  normalize=False, version=2, **kwargs):
         super().__init__()
         self.data_root = data_root
         self.transform = transform
         self.time_window = time_window
         self.center_crop = center_crop
         self.gaze_size = gaze_size
-        self.resize_gs = resize_gs
         self.resolution = resolution
         self.normalize = normalize
         self.version = version
@@ -37,6 +35,9 @@ class Nymeria(Dataset):
 
         self.action_size = 9
         self.size = len(self.dataset)
+
+        self.means = np.array([ 0.869, -0.654,  0.005,  0.014,  0.036,  0.927,  5.975, -4.339,  0.538],dtype=np.float32)
+        self.stds = np.array([50.698, 40.,  0.099,  0.101,  0.258,  0.23,  43.243, 40.499, 12.283],dtype=np.float32)
         print("Length:", self.size)
 
 
@@ -54,15 +55,12 @@ class Nymeria(Dataset):
         if self.center_crop:
             img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
             return img, (row["gaze_x"], row["gaze_y"])
-        elif self.gaze_size == 540:
-            if self.resize_gs:
-                img = torchvision.transforms.functional.resize(img, 224, InterpolationMode.BICUBIC)
-            return img, (row["gaze_x"], row["gaze_y"])
         else:
             adj_gaze_x, adj_gaze_y = row["gaze_x"], row["gaze_y"]
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
-            adj_gaze_x += - max(0,adj_gaze_x + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_x - self.gaze_size//2)
-            adj_gaze_y += - max(0,adj_gaze_y + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_y - self.gaze_size//2)
+            gap_resolution = self.resolution - self.adj_resolution
+            adj_gaze_x += - max(0,adj_gaze_x + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_x - self.gaze_size//2 - gap_resolution)
+            adj_gaze_y += - max(0,adj_gaze_y + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_y - self.gaze_size//2 - gap_resolution)
 
             img = torchvision.transforms.functional.crop(img,
                                                              adj_gaze_y - self.gaze_size//2,
@@ -127,14 +125,16 @@ class Nymeria(Dataset):
 
         r_rel = scipy.spatial.transform.Rotation.from_matrix(matrix=r_rel).as_quat()
         gaze_movement = np.array(g2) - np.array(g1)
-        if self.normalize:
-            gaze_movement /= self.adj_resolution - self.gaze_size
+        # if self.normalize:
+        #     gaze_movement /= self.adj_resolution - self.gaze_size
 
         action = torch.tensor(np.concatenate(
             (gaze_movement.astype(np.float32),
             r_rel.astype(np.float32),
             t_rel.astype(np.float32)), axis=0
         ))
+
+        action = (action - self.means)/self.stds
         return action
 
     def __getitem__(self, idx):

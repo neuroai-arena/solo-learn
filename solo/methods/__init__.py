@@ -33,6 +33,7 @@ from solo.methods.nnclr import NNCLR
 from solo.methods.nnsiam import NNSiam
 from solo.methods.ressl import ReSSL
 from solo.methods.simclr import SimCLR
+from solo.methods.simclraa import AASimCLR
 from solo.methods.simsiam import SimSiam
 from solo.methods.supcon import SupCon
 from solo.methods.swav import SwAV
@@ -56,6 +57,7 @@ METHODS = {
     "mocov3": MoCoV3,
     "aamocov3": AAMoCoV3,
     "cipermocov3": CiperMoCoV3,
+    "aasimclr": AASimCLR,
     "nnbyol": NNBYOL,
     "nnclr": NNCLR,
     "nnsiam": NNSiam,
@@ -92,5 +94,6 @@ __all__ = [
     "WMSE",
     "All4One",
     "AAMoCoV3",
+    "AASimCLR",
     "CiperMoCoV3"
 ]

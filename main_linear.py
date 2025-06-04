@@ -18,6 +18,8 @@
 # DEALINGS IN THE SOFTWARE.
 import warnings
 
+import omegaconf.listconfig
+
 # Suppress the specific warning
 warnings.filterwarnings(
     "ignore",
@@ -54,6 +56,23 @@ except ImportError:
 else:
     _dali_avaliable = True
 
+def build_mlp(num_layers, input_dim, mlp_dim, output_dim, last_bn=True):
+    mlp = []
+    for l in range(num_layers):
+        dim1 = input_dim if l == 0 else mlp_dim
+        dim2 = output_dim if l == num_layers - 1 else mlp_dim
+
+        mlp.append(nn.Linear(dim1, dim2, bias=False))
+
+        if l < num_layers - 1:
+            mlp.append(nn.BatchNorm1d(dim2))
+            mlp.append(nn.ReLU(inplace=True))
+        elif last_bn:
+            # follow SimCLR's design
+            mlp.append(nn.BatchNorm1d(dim2, affine=False))
+
+    return nn.Sequential(*mlp)
+
 
 @hydra.main(version_base="1.2")
 def main(cfg: DictConfig):
@@ -79,18 +98,40 @@ def main(cfg: DictConfig):
 
     # assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
     if cfg.pretrained_feature_extractor is not None:
-        state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+        state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        projector_state = {}
+
+        if cfg.pretrain_method == 'dinov2':
+            state = state['model']
+            _filter = f"{cfg.network_type}.backbone."
+        else:
+            state = state["state_dict"]
+            _filter = "backbone."
+
         for k in list(state.keys()):
+            if k.startswith("projector."):
+                projector_state[k.replace("projector.", "")] = state[k]
             if "encoder" in k:
                 state[k.replace("encoder", "backbone")] = state[k]
-                logging.warn(
-                    "You are using an older checkpoint. Use a new one as some issues might arrise."
-                )
-            if "backbone" in k:
-                state[k.replace("backbone.", "")] = state[k]
+            if _filter in k:
+                state[k.replace(_filter, "")] = state[k]
             del state[k]
-        backbone.load_state_dict(state, strict=False)
+
+        _keys = backbone.load_state_dict(state, strict=False)
+        # print(_keys)
         logging.info(f"Loaded {ckpt_path}")
+        if cfg.use_projector:
+            projector = build_mlp(len([k for k in projector_state.keys() if "weight" in k])//2 +1, 2048, 4096, 256, True)
+            projector.load_state_dict(projector_state, strict=True)
+            class model(nn.Module):
+                def __init__(self, backbone, head, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.backbone = backbone
+                    self.head = head
+                    self.num_features = 256
+                def forward(self, input):
+                     return self.head(self.backbone(input))
+            backbone = model(backbone, projector)
 
     # check if mixup or cutmix is enabled
     mixup_func = None
@@ -111,6 +152,8 @@ def main(cfg: DictConfig):
         loss_func = SoftTargetCrossEntropy()
     elif cfg.label_smoothing > 0:
         loss_func = LabelSmoothingCrossEntropy(smoothing=cfg.label_smoothing)
+    elif isinstance(cfg.data.num_classes, tuple) or isinstance(cfg.data.num_classes, omegaconf.listconfig.ListConfig):
+        loss_func = torch.nn.MSELoss()
     else:
         loss_func = torch.nn.CrossEntropyLoss()
 
@@ -135,7 +178,8 @@ def main(cfg: DictConfig):
         auto_augment=cfg.auto_augment,
         train_backgrounds=cfg.data.train_backgrounds,
         val_backgrounds=cfg.data.val_backgrounds,
-        aug_kwargs = cfg.aug_kwargs
+        aug_kwargs = cfg.aug_kwargs,
+        transform_kwargs=cfg.data.transform_kwargs
     )
 
     if cfg.data.format == "dali":
@@ -178,6 +222,7 @@ def main(cfg: DictConfig):
     elif cfg.resume_from_checkpoint is not None:
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
+
     callbacks = []
 
     if cfg.checkpoint.enabled:

@@ -28,6 +28,7 @@ _N_CLASSES_PER_DATASET = {
     "imagenet2_100": 100,
     "imagenet_42": 1000,
     "imagenet100_42": 100,
+    "imagenet100_im": 100,
     "tiny": 200,
     "core50": 50,
     "DTD": 47,
@@ -48,7 +49,8 @@ _N_CLASSES_PER_DATASET = {
     "imagenet10pct_42": 1000,
     "toybox": 348,
     'core50_bg': 11,
-    'COIL100': 100
+    'COIL100': 100,
+    "SUN_rgbd": (3, 224, 224)
 }
 
 _SUPPORTED_DATASETS = [
@@ -62,6 +64,7 @@ _SUPPORTED_DATASETS = [
     "imagenet2_100",
     "imagenet_42",
     "imagenet100_42",
+    "imagenet100_im",
     'core50',
     "custom",
     "DTD",
@@ -84,7 +87,8 @@ _SUPPORTED_DATASETS = [
     "STL10_224",
     "STL10_FG_224",
     "STL10_FG",
-    "tiny"
+    "tiny",
+    "SUN_rgbd"
 ]
 
 
@@ -108,6 +112,7 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
     cfg.data.train_backgrounds = omegaconf_select(cfg, "data.train_backgrounds", None)
     cfg.data.val_backgrounds = omegaconf_select(cfg, "data.val_backgrounds", None)
+    cfg.data.transform_kwargs = omegaconf_select(cfg, "data.transform_kwargs", None)
 
     return cfg
 
@@ -266,5 +271,7 @@ def parse_cfg(cfg: omegaconf.DictConfig):
         cfg.optimizer.kwargs.betas = omegaconf_select(cfg, "optimizer.kwargs.betas", [0.9, 0.999])
 
     cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
+    cfg.use_projector = omegaconf_select(cfg, "use_projector", False)
+
     cfg = add_and_assert_aug_cfg(cfg)
     return cfg

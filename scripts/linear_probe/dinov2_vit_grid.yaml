@@ -1,0 +1,94 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: dinov2_imagenet_100_t=0_gs=224
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_16_gs224_t0_lr=001_dpr=01/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_gs224_t15_lr=001_dpr=01/model_final.pth"
+pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=01/model_0031434.pth" # model_0031434.pth
+network_type: teacher
+
+method: "dinov2"
+pretrain_method: "dinov2"
+
+backbone:
+  name: "vit_base"
+  kwargs:
+    patch_size: 14
+    init_values: 1.0e-05
+    drop_path_uniform: true
+    ffn_layer: "mlp"
+    block_chunks: 0
+    qkv_bias: true
+    proj_bias: true
+    ffn_bias: true
+    num_register_tokens: 0
+    interpolate_antialias: false
+    interpolate_offset: 0.1
+
+data:
+  dataset: imagenet100_42
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets"
+  val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+  train_backgrounds: [ 's1', 's2', 's3', 's4', 's5', 's6' ]
+  val_backgrounds: [ 's7', 's8', 's9', 's10', 's11' ]
+  num_workers: 8
+optimizer:
+  name: "sgd"
+  batch_size: 128
+  lr: 0.1
+  weight_decay: 0
+  momentum: 0.9
+scheduler:
+  name: "warmup_cosine"
+  warmup_start_lr: 0.00001
+  warmup_epochs: 0
+  max_epochs: 100
+  interval: "epoch"
+checkpoint:
+  enabled: True
+  dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
+  frequency: 1
+  save_last: True
+auto_resume:
+  enabled: False
+  max_hours: 300
+early_stopping:
+  enabled: False
+  patience: 5
+  monitor: "val_acc1"
+  mode: "max"
+wandb:
+  enabled: True
+  entity: "aaubret"
+  project: "EgocentricVision"
+  group: "dinov2"
+  job_type: "linear_probe_grid_v2"
+  offline: False
+
+use_pre_extract_feats: False
+skip_pre_extraction_of_feats: False
+finetune: False
+
+grid:
+  enabled: True
+  lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
+  use_avgpool: [True, False]
+  use_cls_token: [True, False]
+  use_n_blocks: [1]
+
+# overwrite PL stuff
+max_epochs: 100
+devices: 8
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 32
+log_every_n_steps: 50

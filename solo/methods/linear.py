@@ -11,9 +11,12 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from torchvision.models.feature_extraction import create_feature_extractor
+
 from timm.models.vision_transformer import VisionTransformer
 
 from solo.utils.lars import LARS
@@ -25,6 +28,7 @@ from solo.utils.misc import (
     remove_bias_and_norm_from_weight_decay,
 )
 from solo.utils.multi_linear import setup_linear_classifiers
+from solo.backbones.vit import is_transformer
 
 
 class FeatureDataset(Dataset):
@@ -134,11 +138,19 @@ class LinearModel(pl.LightningModule):
         else:
             self.features_dim = self.backbone.num_features
 
-        self.is_transformer = isinstance(self.backbone, VisionTransformer)
+        self.is_transformer = is_transformer(backbone)
+
 
         if self.cfg.grid.enabled:
+            if not self.is_transformer and self.cfg.grid.layer_names is not None:
+                self.backbone = create_feature_extractor(self.backbone, return_nodes=list(self.cfg.grid.layer_names))
+
             sample_output = self.forward_backbone(torch.randn(2, 3, 224, 224))
-            print("Sample output shape", sample_output.shape)
+            if isinstance(sample_output, dict):
+                for k, v in sample_output.items():
+                    print(k, v.shape)
+            else:
+                print("Sample output shape", sample_output.shape)
 
             self.classifier, self.optim_param_groups = setup_linear_classifiers(
                 sample_output=sample_output,
@@ -148,10 +160,10 @@ class LinearModel(pl.LightningModule):
                 devices=self.cfg.devices,
                 num_classes=self.cfg.data.num_classes,
                 is_transformer=self.is_transformer,
-
                 use_avgpool=self.cfg.grid.use_avgpool,
                 use_cls_token=self.cfg.grid.use_cls_token,
                 use_n_blocks=self.cfg.grid.use_n_blocks,
+                layer_names=self.cfg.grid.layer_names,
             )
         else:
             self.classifier = nn.Linear(self.features_dim, cfg.data.num_classes)
@@ -263,7 +275,8 @@ class LinearModel(pl.LightningModule):
                                         0.5])
         cfg.grid.use_avgpool = omegaconf_select(cfg, "grid.use_avgpool", None)
         cfg.grid.use_cls_token = omegaconf_select(cfg, "grid.use_cls_token", None)
-        cfg.grid.use_n_blocks = omegaconf_select(cfg, "grid.use_n_blocks", None)
+        cfg.grid.use_n_blocks = omegaconf_select(cfg, "grid.use_n_blocks", [1])
+        cfg.grid.layer_names = omegaconf_select(cfg, "grid.layer_names", None)
 
         return cfg
 
@@ -304,7 +317,6 @@ class LinearModel(pl.LightningModule):
 
         assert self.optimizer in self._OPTIMIZERS
         optimizer = self._OPTIMIZERS[self.optimizer]
-
         optimizer = optimizer(
             learnable_params,
             lr=self.lr,
@@ -391,17 +403,22 @@ class LinearModel(pl.LightningModule):
                 X,
                 n=max(self.cfg.grid.use_n_blocks),
                 return_prefix_tokens=True,
-                norm=False,
+                norm=True,
             )
-            out = torch.stack(
-                [torch.cat(
-                    [
-                        prefix,  # batch, num_prefix, dim
-                        torch.mean(patch, dim=1).unsqueeze(1)  # batch, num_patch, dim -> batch, 1, dim
-                    ],
-                    dim=1) for patch, prefix in out],
-                dim=1)  # (batch, layer, num_prefix + 1, dim)
+            if any([x is not None for x in [self.cfg.grid.use_avgpool, self.cfg.grid.use_cls_token]]):
+                print([x is not None for x in [self.cfg.grid.use_avgpool, self.cfg.grid.use_cls_token]])
+                out = torch.stack(
+                    [torch.cat(
+                        [
+                            prefix,  # batch, num_prefix, dim
+                            torch.mean(patch, dim=1).unsqueeze(1)  # batch, num_patch, dim -> batch, 1, dim
+                        ],
+                        dim=1) for patch, prefix in out],
+                    dim=1)  # (batch, layer, num_prefix + 1, dim)
+            else:
+                out = torch.stack([torch.cat([ prefix, patch], dim=1) for patch, prefix in out],dim=1)  # (batch, layer, num_prefix + 1, dim)
             return out
+
         return self.backbone(X)
 
     def forward(self, X: torch.tensor) -> Dict[str, Any]:
@@ -418,14 +435,16 @@ class LinearModel(pl.LightningModule):
             X = X.to(memory_format=torch.channels_last)
 
         if not self.use_pre_extract_feats or (
-                self.trainer.sanity_checking and not self.cfg.skip_pre_extraction_of_feats):
+                self.trainer.sanity_checking and not self.cfg.skip_pre_extractinmon_of_feats):
             with torch.set_grad_enabled(self.finetune):
                 feats = self.forward_backbone(X)
         else:
             feats = X
 
+        # if self.cfg.use_projector and self.cfg.grid.layer_names:
+        #     feats = self.backbone.head(feats)
+        logits = self.classifier(feats)
 
-        logits = self.classifier(feats.detach())
         return {"logits": logits, "feats": feats}
 
     def shared_step(
@@ -443,7 +462,7 @@ class LinearModel(pl.LightningModule):
         """
 
         X, target = batch
-        target = target.long()
+        target = target.long() if len(target.shape) <= 2 else target.float()
 
         metrics = {"batch_size": X.size(0)}
         if self.training and self.mixup_func is not None:
@@ -461,22 +480,24 @@ class LinearModel(pl.LightningModule):
                 metrics.update({f"{mode}/loss": loss})
         else:
             out = self(X)["logits"]
-
             if isinstance(out, dict):
                 total_loss = 0
                 for classifier, logits in out.items():
-                    loss = F.cross_entropy(logits, target)
+                    loss = self.loss_func(logits, target)
                     total_loss += loss
 
-                    acc1, acc5 = accuracy_at_k(logits, target, top_k=(1, 5))
-                    metrics.update({f"{mode}/{classifier}_loss": loss,
-                                    f"{mode}/{classifier}_acc1": acc1,
-                                    f"{mode}/{classifier}_acc5": acc5})
+                    if len(target.shape) <= 2:
+                        acc1, acc5 = accuracy_at_k(logits, target, top_k=(1, 5))
+                        metrics.update({f"{mode}/{classifier}_acc1": acc1,
+                                        f"{mode}/{classifier}_acc5": acc5})
+                    metrics.update({f"{mode}/{classifier}_loss": loss})
                 metrics.update({f"{mode}/loss": total_loss})
             else:
-                loss = F.cross_entropy(out, target)
-                acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
-                metrics.update({f"{mode}/loss": loss, f"{mode}/acc1": acc1, f"{mode}/acc5": acc5})
+                loss = self.loss_func(out, target)
+                metrics.update({f"{mode}/loss": loss})
+                if len(target.shape) <= 2:
+                    acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
+                    metrics.update({f"{mode}/acc1": acc1, f"{mode}/acc5": acc5})
 
         return metrics
 

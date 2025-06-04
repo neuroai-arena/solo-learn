@@ -102,8 +102,10 @@ class GaussianBlur:
         Returns:
             Image: blurred image.
         """
-
-        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        if not isinstance(self.sigma, (float, int)):
+            sigma = random.uniform(self.sigma[0], self.sigma[1])
+        else:
+            sigma = self.sigma
         img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
         return img
 
@@ -160,8 +162,15 @@ class NCropAugmentation:
 
 
 class FullTransformPipeline:
-    def __init__(self, transforms: Callable) -> None:
+    def __init__(self, transforms: Callable, same_augmentations=False) -> None:
         self.transforms = transforms
+        self.same_augmentations = same_augmentations
+        if self.same_augmentations == 2:
+            self.crop_resize = torchvision.transforms.RandomResizedCrop(
+                224,
+                scale=(0.2, 1),
+                interpolation=torchvision.transforms.InterpolationMode.BICUBIC,
+            )
 
     def __call__(self, x: Image, x2: Image = None, action = None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
@@ -174,8 +183,14 @@ class FullTransformPipeline:
         """
         out = []
         if x2 is not None:
-            # t2 = len(self.transforms) - 1
+            if self.same_augmentations == 2:
+                x = self.crop_resize(x)
+                x2 = self.crop_resize(x2)
+
+            state = torch.get_rng_state()
             out.extend(self.transforms[0](x))
+            if self.same_augmentations:
+                torch.set_rng_state(state)
             out.extend(self.transforms[1](x2))
             for t in self.transforms[2:]:
                 # out.extend(transform(random.choice([x, x2])))
@@ -237,6 +252,11 @@ def build_transform_pipeline(dataset, cfg):
     )
 
     augmentations = []
+
+    if hasattr(cfg, "global_gaussian_blur") and cfg.global_gaussian_blur.enabled:
+        print("ADDING global_gaussian_blur wiht sigma", cfg.global_gaussian_blur.sigma)
+        augmentations.append(GaussianBlur(sigma=cfg.global_gaussian_blur.sigma))
+
     if cfg.rrc.enabled:
         augmentations.append(
             transforms.RandomResizedCrop(

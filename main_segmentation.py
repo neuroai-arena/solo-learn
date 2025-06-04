@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
 
     assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
 
-    state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)["state_dict"]
     for k in list(state.keys()):
         if "encoder" in k:
             state[k.replace("encoder", "backbone")] = state[k]
@@ -74,6 +74,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.optimizer.batch_size,
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
+        transform_kwargs=cfg.data.augmentations
     )
 
     # 1.7 will deprecate resume_from_checkpoint, but for the moment

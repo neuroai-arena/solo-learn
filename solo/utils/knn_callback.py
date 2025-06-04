@@ -17,7 +17,7 @@ class KNNCallback(pl.Callback):
         self.train_loader, self.test_loader = None, None
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        T_train, T_val = prepare_transforms(self.cfg.dataset)
+        T_train, T_val = prepare_transforms(self.cfg.dataset, **(self.cfg.transform_kwargs or {}))
 
         train_dataset, val_dataset = prepare_datasets(
             self.cfg.dataset,
@@ -26,7 +26,6 @@ class KNNCallback(pl.Callback):
             train_data_path=self.cfg.train_path,
             val_data_path=self.cfg.val_path,
             data_format=self.cfg.format,
-
         )
         self.train_loader = DataLoader(
             train_dataset,
@@ -53,6 +52,12 @@ class KNNCallback(pl.Callback):
     # def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
     #     if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
     #         self._run(trainer, pl_module)
+
+    # def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        # if "vit" in self.cfg.backbone.name:
+        # if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
+        #     self._run(trainer, pl_module)
+
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
@@ -101,7 +106,15 @@ class KNNCallback(pl.Callback):
             y = y.to(model.device, non_blocking=True)
 
             outs = model(X)
-            res_X.append(outs["feats"].detach())
+            # free, total = torch.cuda.mem_get_info(outs["feats"].device)
+            # mem_used_mb = (total - free) / 1024 ** 2
+            # print(outs["feats"].shape, mem_used_mb)
+
+            if self.cfg.clone:
+                #Memory leak with vit and global pool token without the clone
+                res_X.append(outs["feats"].clone().detach())
+            else:
+                res_X.append(outs["feats"].detach())
             res_y.append(y.detach())
         res_X = torch.cat(res_X)
         res_y = torch.cat(res_y)

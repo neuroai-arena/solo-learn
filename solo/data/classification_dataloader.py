@@ -35,7 +35,9 @@ from solo.data.cortical_magnification import CorticalMagnification, CenterCropBi
 from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42, ImageNetS
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
+from solo.data.custom.sun_rgbd import SunRGBD
 from solo.data.custom.tinyimgnet import TinyDataset
+from solo.data.pretrain_dataloader import GaussianBlur
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -86,7 +88,7 @@ def build_custom_pipeline():
     return pipeline
 
 
-def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.Module]:
+def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Module, nn.Module]:
     """Prepares pre-defined train and test transformation pipelines for some datasets.
 
     Args:
@@ -204,6 +206,25 @@ def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.M
         )
     }
 
+    sunrgbd_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),  # resize shorter
+                transforms.CenterCrop(224),  # take center crop
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),  # resize shorter
+                transforms.CenterCrop(224),  # take center crop
+                transforms.ToTensor()
+                # transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        )
+    }
+
 
     core50_pipeline = {
         "T_train": transforms.Compose(
@@ -268,7 +289,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.M
     coil100_pipeline = {
         "T_train": transforms.Compose(
             [
-                transforms.RandomResizedCrop(size=128, scale=(0.08, 1.0)),
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
@@ -276,6 +297,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.M
         ),
         "T_val": transforms.Compose(
             [
+                transforms.Resize(224),  # resize shorter
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
             ]
@@ -295,6 +317,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.M
         "imagenet2": imagenet_pipeline,
         "imagenet_42": imagenet_pipeline,
         "imagenet100_42": imagenet_pipeline,
+        "imagenet100_im": imagenet_pipeline,
         "ego4d": imagenet_pipeline,
         "nymeria": imagenet_pipeline,
         "tiny": tiny_pipeline,
@@ -320,6 +343,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.M
         "toybox": toybox_pipeline,
         "feat": imagenet_pipeline,  # this is a placeholder
         'COIL100': coil100_pipeline,
+        "SUN_rgbd": sunrgbd_pipeline
     }
 
     assert dataset in pipelines
@@ -339,6 +363,14 @@ def prepare_transforms(dataset: str, aug_kwargs = None) -> Tuple[nn.Module, nn.M
 
         T_train.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_train.transforms
         T_val.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_val.transforms
+
+    if kwargs.get("global_gaussian_blur", None) is not None:
+        sigma = kwargs["global_gaussian_blur"]["sigma"]
+        T_train.transforms.insert(0, GaussianBlur(sigma=sigma))
+        T_val.transforms.insert(0, GaussianBlur(sigma=sigma))
+
+    print("T_train", T_train)
+    print("T_val", T_val)
     return T_train, T_val
 
 
@@ -382,10 +414,10 @@ def prepare_datasets(
 
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
-        "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", 'core50', "DTD", 'Flowers102',
+        "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", "imagenet100_im", 'core50', "DTD", 'Flowers102',
         'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
         "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
-        "STL10_FG", "nymeria"
+        "STL10_FG", "nymeria","SUN_rgbd",
     ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
@@ -440,7 +472,10 @@ def prepare_datasets(
             download=download,
             transform=T_val,
         )
-    if dataset in ["Places365_h5"]:
+    elif dataset in ["SUN_rgbd"]:
+        train_dataset = SunRGBD(train_data_path, "train", T_train, T_val)
+        val_dataset = SunRGBD(val_data_path, "val", T_train, T_val)
+    elif dataset in ["Places365_h5"]:
         train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'Places365', transform=T_train,
                                                 split="train")
         val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'Places365', transform=T_val, split="val")
@@ -462,9 +497,11 @@ def prepare_datasets(
     elif dataset in ["imagenet2", "imagenet2_100"]:
         train_dataset = ImgnetDataset(train_data_path, "train", T_train, dataset == "imagenet2_100")
         val_dataset = ImgnetDataset(val_data_path, "val", T_val, dataset == "imagenet2_100")
-    elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42"]:
+    elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42", "imagenet100_im"]:
         if dataset == "imagenet100_42":
             subset = "imgnet100"
+        elif dataset == "imagenet100_im":
+            subset = 'imgnet100_im'
         elif dataset == "imagenet1pct_42":
             subset = "1pct"
         elif dataset == "imagenet10pct_42":
@@ -565,6 +602,7 @@ def prepare_data(
         data_fraction: float = -1.0,
         auto_augment: bool = False,
         aug_kwargs = {},
+        transform_kwargs: Optional[dict] = None,
         **dataset_kwargs
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
@@ -588,7 +626,8 @@ def prepare_data(
         Tuple[DataLoader, DataLoader]: prepared training and validation dataloader.
     """
 
-    T_train, T_val = prepare_transforms(dataset, aug_kwargs)
+
+    T_train, T_val = prepare_transforms(dataset, aug_kwargs, **(transform_kwargs or {}))
     if auto_augment:
         T_train = create_transform(
             input_size=224,

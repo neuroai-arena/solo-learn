@@ -432,7 +432,13 @@ class BaseMethod(pl.LightningModule):
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
         feats = self.backbone(X)
-        out = {"feats": feats}
+        if isinstance(feats, dict):
+            out = feats
+            out["feats"] = torch.flatten(feats[self.cfg.method_kwargs.layer_names[0]], 1)
+            # out["feats"] = feats[self.cfg.method_kwargs.layer_names[0]]
+        else:
+            out = {"feats": feats}
+
         if not self.cfg.no_validation:
             logits = self.classifier(feats.detach())
             out.update({"logits": logits})
@@ -454,7 +460,12 @@ class BaseMethod(pl.LightningModule):
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
         feats = self.backbone(X)
-        return {"feats": feats}
+        if isinstance(feats, dict):
+            out = feats
+            out["feats"] = torch.flatten(feats[self.cfg.method_kwargs.layer_names[0]], 1)
+        else:
+            out = {"feats": feats}
+        return out
 
     def _base_shared_step(self, X: torch.Tensor, targets: torch.Tensor) -> Dict:
         """Forwards a batch of images X and computes the classification loss, the logits, the
@@ -741,7 +752,12 @@ class BaseMomentumMethod(BaseMethod):
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
         feats = self.momentum_backbone(X)
-        return {"feats": feats}
+        if isinstance(feats, dict):
+            out = feats
+            out["feats"] = torch.flatten(feats[self.cfg.method_kwargs.layer_names[0]], 1)
+        else:
+            out = {"feats": feats}
+        return out
 
     def _shared_step_momentum(self, X: torch.Tensor, targets: torch.Tensor) -> Dict[str, Any]:
         """Forwards a batch of images X in the momentum backbone and optionally computes the

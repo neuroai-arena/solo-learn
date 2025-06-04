@@ -37,6 +37,7 @@ def dataset_args(parser: ArgumentParser):
         "imagenet",
         "imagenet100",
         "imagenet100_42",
+        "imagenet100_im",
         "imagenet_42",
         "custom",
         "feat"

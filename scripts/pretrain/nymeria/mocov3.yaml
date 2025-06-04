@@ -19,7 +19,7 @@ method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
   pred_hidden_dim: 4096
-  temperature: 0.1
+  temperature: 0.2
 momentum:
   base_tau: 0.996
   final_tau: 0.996
@@ -28,7 +28,7 @@ data:
   train_path: "/scratch_shared/aubret/nymeria/"
   val_path: None
   format: "h5"
-  num_workers: 8
+  num_workers: 4
   dataset_kwargs:
     gaze_size: 224
     time_window: 3
@@ -47,10 +47,10 @@ scheduler:
   warmup_epochs: 5
 checkpoint:
   enabled: True
-  dir: "trained_models"
+  dir: "trained_models2"
   frequency: 1
   keep_prev: False
-  every_n_iter: 0
+  save_last: True
 auto_resume:
   enabled: True
 

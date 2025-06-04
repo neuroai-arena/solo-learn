@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union, Dict
 
 import torch
 import torch.nn as nn
@@ -16,7 +16,7 @@ except ImportError:
                        torchvision.__version__)
 
 
-def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
+def prepare_transforms(dataset: str, transform_kwargs: Dict = {}) -> Tuple[nn.Module, nn.Module]:
     """Prepares pre-defined train and test transformation pipelines for some datasets.
 
     Args:
@@ -32,11 +32,14 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         x[x == 255] = 0
         return x
 
+    print(transform_kwargs)
+    img_size = transform_kwargs.get('img_size', 224)
+
     pascal_voc_pipeline = {
         "T_train": T.Compose([
             T.ToImage(),
             T.Lambda(replace_void_label, Mask),
-            T.RandomResizedCrop(size=(224, 224), antialias=True, scale=(0.2, 1.0)),
+            T.RandomResizedCrop(size=(img_size, img_size), antialias=True, scale=(0.2, 1.0)),
             T.RandomHorizontalFlip(p=0.5),
             T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
             T.ToDtype(torch.float32, scale=True),
@@ -45,7 +48,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "T_val": T.Compose([
             T.ToImage(),
             T.Lambda(replace_void_label, Mask),
-            T.Resize(size=(224, 224), antialias=True),
+            T.Resize(size=(img_size, img_size), antialias=True),
             T.ToDtype(torch.float32, scale=True),
             T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
@@ -182,6 +185,7 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
+        transform_kwargs: Dict = {},
         **dataset_kwargs
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
@@ -205,7 +209,7 @@ def prepare_data(
         Tuple[DataLoader, DataLoader]: prepared training and validation dataloader.
     """
 
-    T_train, T_val = prepare_transforms(dataset)
+    T_train, T_val = prepare_transforms(dataset, transform_kwargs)
     if auto_augment:
         raise NotImplementedError("Auto augment not implemented yet.")
 

@@ -17,11 +17,17 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple, Type, Union
 
+import numpy as np
 import omegaconf
 import torch
 import torch.nn as nn
+import torchvision
+from torchvision import transforms
+from torchvision.models.feature_extraction import create_feature_extractor
+from torchvision.models.resnet import Bottleneck, BasicBlock, conv1x1
+
 from solo.losses.mocov3 import mocov3_loss_func
 from solo.methods import MoCoV3
 from solo.methods.base import BaseMomentumMethod
@@ -32,10 +38,27 @@ from solo.utils.momentum import initialize_momentum_params
 class AAMoCoV3(MoCoV3):
     def __init__(self, cfg: omegaconf.DictConfig):
         super().__init__(cfg)
-        cfg.method_kwargs.action_layers = omegaconf_select(cfg, "method_kwargs.aa_layers", 2)
-        cfg.method_kwargs.action_hidden_dim = omegaconf_select(cfg, "method_kwargs.aa_hidden_dim", 4096)
-        cfg.method_kwargs.action_weight = omegaconf_select(cfg, "method_kwargs.aa_weight", 1)
-        cfg.method_kwargs.aa_temperature= omegaconf_select(cfg, "method_kwargs.aa_temperature", 0.2)
+        cfg.method_kwargs.aa_layers= omegaconf_select(cfg, "method_kwargs.aa_layers", 2)
+        cfg.method_kwargs.aa_hidden_dim = omegaconf_select(cfg, "method_kwargs.aa_hidden_dim", 4096)
+        cfg.method_kwargs.aa_weight = omegaconf_select(cfg, "method_kwargs.aa_weight", 1)
+        cfg.method_kwargs.tt_weight = omegaconf_select(cfg, "method_kwargs.tt_weight", 1)
+        cfg.method_kwargs.aa_temperature = omegaconf_select(cfg, "method_kwargs.aa_temperature", 0.2)
+        cfg.method_kwargs.layer_names = omegaconf_select(cfg, "method_kwargs.layer_names", ["avgpool"])
+
+        self.cfg.method_kwargs.dorsal = omegaconf_select(self.cfg, "method_kwargs.dorsal", {})
+        self.cfg.method_kwargs.dorsal.in_planes = omegaconf_select(self.cfg, "method_kwargs.dorsal.in_planes", 2048)
+        self.cfg.method_kwargs.dorsal.strides = omegaconf_select(self.cfg, "method_kwargs.dorsal.strides", [])
+        self.cfg.method_kwargs.dorsal.layers = omegaconf_select(self.cfg, "method_kwargs.dorsal.layers", 0)
+        self.cfg.method_kwargs.dorsal.last_kernel = omegaconf_select(self.cfg, "method_kwargs.dorsal.last_kernel", 7)
+
+        self.cfg.method_kwargs.dorsal.layers = max(self.cfg.method_kwargs.dorsal.layers,len(self.cfg.method_kwargs.dorsal.strides))
+        self.cfg.method_kwargs.dorsal.strides = self.cfg.method_kwargs.dorsal.strides + [1] * (self.cfg.method_kwargs.dorsal.layers - len(self.cfg.method_kwargs.dorsal.strides))
+
+        self.backbone = create_feature_extractor(self.backbone, return_nodes=list(cfg.method_kwargs.layer_names))
+        self.momentum_backbone = create_feature_extractor(self.momentum_backbone, return_nodes=list(cfg.method_kwargs.layer_names))
+
+        self.dorsal = self.create_dorsal_stream()
+        self.momentum_dorsal = self.create_dorsal_stream()
 
         self.action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
                                                 9,
@@ -82,6 +105,72 @@ class AAMoCoV3(MoCoV3):
                                                 )
         initialize_momentum_params(self.action_projector, self.momentum_action_projector)
         initialize_momentum_params(self.vis_action_projector, self.momentum_vis_action_projector)
+        initialize_momentum_params(self.dorsal, self.momentum_dorsal)
+
+
+    def _make_layer(
+        self,
+        inplanes,
+        block: Type[Union[BasicBlock, Bottleneck]],
+        planes: int,
+        blocks: int,
+        strides: int,
+    ) -> nn.Sequential:
+        norm_layer = nn.BatchNorm2d
+        downsample = None
+
+        layers = []
+
+        for i in range(0, blocks):
+            if i > 0:
+                inplanes = planes * block.expansion
+
+            if strides[i] != 1 or inplanes != planes * block.expansion:
+                downsample = nn.Sequential(
+                    conv1x1(inplanes, planes * block.expansion, strides[i]),
+                    norm_layer(planes * block.expansion),
+                )
+            else:
+                downsample = None
+            layers.append(
+                block(
+                    inplanes,
+                    planes,
+                    strides[i],
+                    downsample,
+                    base_width=64,
+                    norm_layer=norm_layer,
+                )
+            )
+        # layers.append(self.avgpool = nn.AdaptiveAvgPool2d((1, 1)))
+        layers.append(nn.Conv2d(inplanes, inplanes, self.cfg.method_kwargs.dorsal.last_kernel))
+        layers.append(nn.Flatten())
+        layers.append(nn.BatchNorm1d(inplanes))
+        layers.append(nn.ReLU(inplace=True))
+        return nn.Sequential(*layers)
+
+    def create_dorsal_stream(self):
+
+        cfg_ds = self.cfg.method_kwargs.dorsal
+
+        if len(self.cfg.method_kwargs.layer_names) == 1:
+            return nn.Flatten()
+
+        dorsal = self._make_layer(cfg_ds.in_planes, Bottleneck, 512, cfg_ds.layers, strides=cfg_ds.strides)
+        for m in dorsal.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+
+        # test_image = torch.rand((2, 3, 224, 224), device="cpu")
+        # out = self.backbone(test_image)[self.cfg.method_kwargs.layer_names[-1]]
+        # print(out.shape)
+        # test_out = dorsal(out)
+        # print(test_out.shape)
+        return dorsal
 
     @property
     def learnable_params(self) -> List[dict]:
@@ -96,6 +185,7 @@ class AAMoCoV3(MoCoV3):
             {"name": "action_predictor", "params": self.action_predictor.parameters()},
             {"name": "vis_action_projector", "params": self.vis_action_projector.parameters()},
             {"name": "vis_action_predictor", "params": self.vis_action_predictor.parameters()},
+            {"name": "dorsal", "params": self.dorsal.parameters()},
         ]
         return super().learnable_params + extra_learnable_params
 
@@ -109,10 +199,10 @@ class AAMoCoV3(MoCoV3):
 
         extra_momentum_pairs = [
             (self.action_projector, self.momentum_action_projector),
-            (self.vis_action_projector, self.momentum_vis_action_projector)
-                                ]
+            (self.vis_action_projector, self.momentum_vis_action_projector),
+            (self.dorsal, self.momentum_dorsal)
+        ]
         return super().momentum_pairs + extra_momentum_pairs
-
 
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
@@ -141,16 +231,20 @@ class AAMoCoV3(MoCoV3):
 
 
         # AA stuff
-        v1 = out["feats"][0]
-        v2 = out["feats"][1]
+        v1 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][0])
+        v2 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][1])
+
+
+
+
         vis_action_proj = self.vis_action_projector(torch.cat((v1, v2), dim=1))
         vis_action_pred = self.vis_action_predictor(vis_action_proj)
 
-        mom_v1 = out["momentum_feats"][0]
-        mom_v2 = out["momentum_feats"][1]
+        mom_v1 = self.momentum_dorsal(out[self.cfg.method_kwargs.layer_names[-1]][0])
+        mom_v2 = self.momentum_dorsal(out[self.cfg.method_kwargs.layer_names[-1]][1])
 
 
-        _, X, targets = batch
+        step , X, targets = batch
         action = X[-1]
         action_proj = self.action_projector(action)
         action_pred = self.action_predictor(action_proj)
@@ -169,10 +263,21 @@ class AAMoCoV3(MoCoV3):
             "train_aa_constrastive_loss": aa_contrastive_loss
         }
         for i in range(action.shape[1]):
-            metrics[f"a{i}"] = action[:,i].mean()
+            metrics[f"a{i}"] = action[0,i]
+
+        # img = X[0]
+        # img2 = X[1]
+        # mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
+        # unnormalize = transforms.Normalize((-mean / std).tolist(), (1.0 / std).tolist())
+        #
+        # for i in range(20):
+        #     imgi = unnormalize(img[i:i+1].cpu())
+        #     imgi2 = unnormalize(img2[i:i+1].cpu())
+        #     torchvision.utils.save_image(imgi, f"/home/aubret/test_images/same/{step[i].item()}_1.png")
+        #     torchvision.utils.save_image(imgi2, f"/home/aubret/test_images/same/{step[i].item()}_2.png")
 
         self.log_dict(metrics, on_epoch=True, on_step=True, sync_dist=True)
 
 
-        return contrastive_loss + class_loss + self.cfg.method_kwargs.action_weight * aa_contrastive_loss
+        return self.cfg.method_kwargs.tt_weight * contrastive_loss + class_loss + self.cfg.method_kwargs.aa_weight * aa_contrastive_loss
 

@@ -32,7 +32,7 @@ class DataPrepIterCheck(pl.LightningDataModule):
                     build_transform_pipeline(self.cfg.data.dataset, aug_cfg), aug_cfg.num_crops
                 )
             )
-        transform = FullTransformPipeline(pipelines)
+        transform = FullTransformPipeline(pipelines, self.cfg.data.same_augmentations)
 
         if self.cfg.debug_augmentations:
             print("Transforms:")

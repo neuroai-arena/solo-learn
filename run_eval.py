@@ -27,6 +27,7 @@ ckpts = [
 datasets = [
     'imagenet_42',
     'imagenet100_42',
+    'imagenet100_im',
     'DTD',
     'Flowers102',
     'FGVCAircraft',
