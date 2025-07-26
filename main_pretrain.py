@@ -22,6 +22,9 @@ import os
 
 import warnings
 
+from solo.data.frankenstein import ConfArrangementCallback
+from solo.data.shapebias import ShapeBiasCallback
+
 # Suppress the specific warning
 warnings.filterwarnings(
     "ignore",
@@ -70,10 +73,10 @@ def main(cfg: DictConfig):
 
     seed_everything(cfg.seed)
 
-    assert cfg.method in METHODS, f"Choose from {METHODS.keys()}"
+    assert cfg.method in METHODS, f"Choose from {METHODS.keys()}, {cfg.method}"
 
-    if cfg.data.num_large_crops != 2:
-        assert cfg.method in ["wmse", "mae"]
+    if cfg.data.num_large_crops < 2:
+        assert cfg.method in ["wmse", "mae"] or "jepa" in cfg.method
 
     model = METHODS[cfg.method](cfg)
     make_contiguous(model)
@@ -154,6 +157,14 @@ def main(cfg: DictConfig):
         callbacks.append(lr_monitor)
 
         callbacks.append(ModelSummary(max_depth=1))
+
+    if cfg.frankenstein_clb.enabled:
+        print("Add callback eval configural arrangement")
+        callbacks.append(ConfArrangementCallback(cfg.frankenstein_clb))
+
+    if cfg.shapebias_clb.enabled:
+        print("Add callback eval shape bias")
+        callbacks.append(ShapeBiasCallback(cfg.shapebias_clb))
 
     # if cfg.max_epochs == 1:
     #     callbacks.append(ResumeStepCallback())

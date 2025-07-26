@@ -29,12 +29,16 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torchvision import transforms
-from torchvision.datasets import ImageFolder
+from torchvision.datasets import ImageFolder, VOCSegmentation
+from torchvision.tv_tensors import Mask
+import torchvision.transforms.v2 as T
+from torchvision.tv_tensors._dataset_wrapper import wrap_dataset_for_transforms_v2
 
 from solo.data.cortical_magnification import CorticalMagnification, CenterCropBig
 from solo.data.custom.imagenet import ImgnetDataset, ImgNetDataset_42, ImageNetS
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
+from solo.data.custom.nyuv2 import NYUDataset
 from solo.data.custom.sun_rgbd import SunRGBD
 from solo.data.custom.tinyimgnet import TinyDataset
 from solo.data.pretrain_dataloader import GaussianBlur
@@ -219,7 +223,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Mo
             [
                 transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),  # resize shorter
                 transforms.CenterCrop(224),  # take center crop
-                transforms.ToTensor()
+                # transforms.ToTensor()
                 # transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
             ]
         )
@@ -304,6 +308,32 @@ def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Mo
         ),
     }
 
+    def replace_void_label(x):
+        """ Replaces the void label 255 with 0, the background label. """
+        x = x.clone()  # Ensure no in-place modifications
+        x[x == 255] = 0
+        return x
+
+
+    pascal_voc_pipeline = {
+        "T_train": T.Compose([
+            T.ToImage(),
+            T.Lambda(replace_void_label, Mask),
+            T.RandomResizedCrop(size=(224, 224), antialias=True, scale=(0.2, 1.0)),
+            T.RandomHorizontalFlip(p=0.5),
+            T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+            T.ToDtype(torch.float32, scale=True),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]),
+        "T_val": T.Compose([
+            T.ToImage(),
+            T.Lambda(replace_void_label, Mask),
+            T.Resize(size=(224, 224), antialias=True),
+            T.ToDtype(torch.float32, scale=True),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+    }
+
     custom_pipeline = build_custom_pipeline()
 
     pipelines = {
@@ -318,6 +348,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Mo
         "imagenet_42": imagenet_pipeline,
         "imagenet100_42": imagenet_pipeline,
         "imagenet100_im": imagenet_pipeline,
+        "imagenet_im": imagenet_pipeline,
         "ego4d": imagenet_pipeline,
         "nymeria": imagenet_pipeline,
         "tiny": tiny_pipeline,
@@ -343,7 +374,9 @@ def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Mo
         "toybox": toybox_pipeline,
         "feat": imagenet_pipeline,  # this is a placeholder
         'COIL100': coil100_pipeline,
-        "SUN_rgbd": sunrgbd_pipeline
+        "SUN_rgbd": sunrgbd_pipeline,
+        "NYUv2": imagenet_pipeline, #ignore,
+        "PascalVOC": pascal_voc_pipeline
     }
 
     assert dataset in pipelines
@@ -412,13 +445,14 @@ def prepare_datasets(
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in [
-        "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
-        "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", "imagenet100_im", 'core50', "DTD", 'Flowers102',
-        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
-        "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
-        "STL10_FG", "nymeria","SUN_rgbd",
-    ]
+    # assert dataset in pipelines.keys()
+    # [
+    #     "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
+    #     "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", "imagenet100_im", "imagenet_im", 'core50', "DTD", 'Flowers102',
+    #     'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
+    #     "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
+    #     "STL10_FG", "nymeria","SUN_rgbd","NYUv2","PascalVOC"
+    # ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
         if dataset == "cifar10_224": dataset = "cifar10"
@@ -451,9 +485,11 @@ def prepare_datasets(
                 ds_path = Path(path) / 'stanford_cars'
                 shutil.move(ds_path, train_data_path)
 
+        test_split = "test"
         # some datasets have different names for their train split
         if dataset == "Places365":
             train_split = "train-standard"
+            test_split = "val"
         elif dataset == "OxfordIIITPet":
             train_split = "trainval"
         else:
@@ -468,13 +504,16 @@ def prepare_datasets(
 
         val_dataset = DatasetClass(
             val_data_path,
-            split="test",
+            split=test_split,
             download=download,
             transform=T_val,
         )
+    elif dataset in ["NYUv2"]:
+        train_dataset = NYUDataset(train_data_path, "train")
+        val_dataset = NYUDataset(val_data_path, "val")
     elif dataset in ["SUN_rgbd"]:
-        train_dataset = SunRGBD(train_data_path, "train", T_train, T_val)
-        val_dataset = SunRGBD(val_data_path, "val", T_train, T_val)
+        train_dataset = SunRGBD(train_data_path, "train", T_train, T_val, **dataset_kwargs)
+        val_dataset = SunRGBD(val_data_path, "val", T_train, T_val, **dataset_kwargs)
     elif dataset in ["Places365_h5"]:
         train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'Places365', transform=T_train,
                                                 split="train")
@@ -497,7 +536,7 @@ def prepare_datasets(
     elif dataset in ["imagenet2", "imagenet2_100"]:
         train_dataset = ImgnetDataset(train_data_path, "train", T_train, dataset == "imagenet2_100")
         val_dataset = ImgnetDataset(val_data_path, "val", T_val, dataset == "imagenet2_100")
-    elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42", "imagenet100_im"]:
+    elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42", "imagenet100_im","imagenet_im"]:
         if dataset == "imagenet100_42":
             subset = "imgnet100"
         elif dataset == "imagenet100_im":
@@ -541,6 +580,26 @@ def prepare_datasets(
         mode = ""
         train_dataset = ImageNetS(Path(train_data_path) / 'ImageNet-S/ImageNetS919/training', transform=T_train, mode=mode)
         val_dataset = ImageNetS(Path(val_data_path) / 'ImageNet-S/ImageNetS919/validation', transform=T_val, mode=mode)
+    elif dataset == "PascalVOC":
+        train_dataset = VOCSegmentation(
+            root=train_data_path,
+            year="2012",
+            image_set="train",
+            download=download,
+            transforms=T_train,
+        )
+        train_dataset = wrap_dataset_for_transforms_v2(train_dataset)
+
+        val_dataset = VOCSegmentation(
+            root=val_data_path,
+            year="2012",
+            image_set="val",
+            download=download,
+            transforms=T_val,
+        )
+        val_dataset = wrap_dataset_for_transforms_v2(val_dataset)
+
+
     if data_fraction > 0:
         assert data_fraction < 1, "Only use data_fraction for values smaller than 1."
         data = train_dataset.samples

@@ -1,5 +1,6 @@
 import torch
 import torchvision
+from PIL import Image
 from kornia.filters import gaussian_blur2d
 import numpy as np
 import math
@@ -211,3 +212,15 @@ def foveation(img, pnt, kerW_coef=0.04, e_o=1.0, N_e=None, spacing=0.5):
     fov_imgtsr = FoveateAt(img_tsr, pnt=pnt, kerW_coef=kerW_coef, e_o=e_o, N_e=N_e, spacing=spacing)
     fov_views = fov_imgtsr.squeeze(0)#.permute(1, 2, 0)
     return fov_views
+
+
+if __name__ == "__main__":
+    # %%
+    from scipy.datasets import face
+    from skimage.transform import rescale
+
+    # imgtsr = torchvision.transforms.functional.to_tensor(Image.open("/home/aubret/Téléchargements/toddler_egocentric.jpeg").convert("RGB"))
+    imgtsr = Image.open("/home/aubret/Téléchargements/toddler_egocentric.jpeg").convert("RGB")
+    img_cm = foveation(imgtsr, (830, 630))
+    torchvision.utils.save_image(img_cm, "/home/aubret/Téléchargements/toddler_egocentric2.jpeg")
+

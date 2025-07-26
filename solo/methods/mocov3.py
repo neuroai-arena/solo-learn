@@ -47,60 +47,39 @@ class MoCoV3(BaseMomentumMethod):
         proj_hidden_dim: int = cfg.method_kwargs.proj_hidden_dim
         proj_output_dim: int = cfg.method_kwargs.proj_output_dim
         pred_hidden_dim: int = cfg.method_kwargs.pred_hidden_dim
-        cfg.method_kwargs.layers = omegaconf_select(cfg, "method_kwargs.layers", 2)
+        cfg.method_kwargs.layers = omegaconf_select(cfg, "method_kwargs.layers", 3)
+        cfg.method_kwargs.layers_pred = omegaconf_select(cfg, "method_kwargs.layers_pred", 2)
 
-        if "resnet" in self.backbone_name:
-            # projector
-            self.projector = self._build_mlp(
-                cfg.method_kwargs.layers,
-                self.features_dim,
-                proj_hidden_dim,
-                proj_output_dim,
-            )
-            # momentum projector
-            self.momentum_projector = self._build_mlp(
-                cfg.method_kwargs.layers,
-                self.features_dim,
-                proj_hidden_dim,
-                proj_output_dim,
-            )
+        # projector
+        self.projector = self._build_mlp(
+            cfg.method_kwargs.layers,
+            self.features_dim,
+            proj_hidden_dim,
+            proj_output_dim,
+        )
+        # momentum projector
+        self.momentum_projector = self._build_mlp(
+            cfg.method_kwargs.layers,
+            self.features_dim,
+            proj_hidden_dim,
+            proj_output_dim,
+        )
 
-            # predictor
-            self.predictor = self._build_mlp(
-                2,
-                proj_output_dim,
-                pred_hidden_dim,
-                proj_output_dim,
-                last_bn=False,
-            )
-        else:
-            # specifically for ViT but allow all the other backbones
-            # projector
-            self.projector = self._build_mlp(
-                3,
-                self.features_dim,
-                proj_hidden_dim,
-                proj_output_dim,
-            )
-            # momentum projector
-            self.momentum_projector = self._build_mlp(
-                3,
-                self.features_dim,
-                proj_hidden_dim,
-                proj_output_dim,
-            )
-
-            # predictor
-            self.predictor = self._build_mlp(
-                2,
-                proj_output_dim,
-                pred_hidden_dim,
-                proj_output_dim,
-            )
+        # predictor
+        self.predictor = self._build_mlp(
+            cfg.method_kwargs.layers_pred,
+            proj_output_dim,
+            pred_hidden_dim,
+            proj_output_dim,
+            last_bn=False,
+        )
 
         initialize_momentum_params(self.projector, self.momentum_projector)
 
     def _build_mlp(self, num_layers, input_dim, mlp_dim, output_dim, last_bn=True):
+        if num_layers == 0:
+            return nn.Identity()
+
         mlp = []
         for l in range(num_layers):
             dim1 = input_dim if l == 0 else mlp_dim

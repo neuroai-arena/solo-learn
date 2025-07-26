@@ -30,7 +30,7 @@ scheduler:
   lr_decay_steps: [60, 80]
 checkpoint:
   enabled: True
-  dir: "trained_models"
+  dir: "/scratch_shared/aubret/trained_models2"
   frequency: 1
   keep_prev: False
   save_last: True
@@ -41,8 +41,8 @@ early_stopping:
 
 grid:
   enabled: True
-  lr: [0.1,0.2,0.4,0.8]
-  layer_names: ["backbone.layer4","backbone.layer3"]
+  lr: [0.0001,0.0003, 0.001, 0.003, 0.01, 0.03, 0.1]
+  layer_names: ["backbone.layer4","backbone.layer3","backbone.layer2"]
   use_avgpool: None
   use_cls_token: None
   use_n_blocks: [1]
@@ -56,5 +56,5 @@ devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
 log_every_n_steps: 50

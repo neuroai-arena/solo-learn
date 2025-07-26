@@ -17,21 +17,32 @@ from solo.data.foveation import foveation
 
 
 class Nymeria(Dataset):
-    def __init__(self, data_root, transform,gaze_size=224, time_window=3, center_crop=False, resolution=512, fps=1,  normalize=False, version=2, **kwargs):
+    def __init__(self, data_root, transform,gaze_size=224, min_gaze_size=0, time_window=3, aa_time_window=25, center_crop=False, resolution=512, fps=1,  normalize=False, version=1, distinct_action=False, size_gaze_aware=True, **kwargs):
         super().__init__()
         self.data_root = data_root
         self.transform = transform
         self.time_window = time_window
         self.center_crop = center_crop
         self.gaze_size = gaze_size
+        self.min_gaze_size = gaze_size if not min_gaze_size else min_gaze_size
+        self.min_gaze_size = self.min_gaze_size if self.min_gaze_size != -1 else 0
         self.resolution = resolution
         self.normalize = normalize
         self.version = version
+        self.distinct_action = distinct_action
+        self.aa_time_window=aa_time_window
         self.adj_resolution = int(self.resolution*0.9)
+        self.size_gaze_aware = size_gaze_aware
 
+        v = f"v{self.version}" if self.version >= 2 else ""
 
-        self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_fps{fps}_res{resolution}.h5"), "r")
-        self.dataset = pd.read_csv(os.path.join(self.data_root, f"egodata_fps{fps}_res{resolution}.csv"))
+        self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data{v}_fps{fps}_res{resolution}.h5"), "r")
+        # self.hdf5_file_name = os.path.join(self.data_root, f"data{v}_fps{fps}_res{resolution}.h5")
+        try:
+            self.dataset = pd.read_csv(os.path.join(self.data_root, f"egodata_depth_fps{fps}_res{resolution}.csv"))
+        except:
+            self.dataset = pd.read_csv(os.path.join(self.data_root, f"egodata{v}_fps{fps}_res{resolution}.csv"))
+
 
         self.action_size = 9
         self.size = len(self.dataset)
@@ -44,29 +55,29 @@ class Nymeria(Dataset):
     def __len__(self):
         return self.size
 
-    def open_image(self, row):
+    def open_image(self, row, gaze_size):
         # index, number, partition = int(row[6]), int(row[11]), str(int(row[5]))
-        recording = str(row["file_id"])
-        index = int(row["index"])
         # img = Image.open(io.BytesIO(self.hdf5_file.get(recording)[index]))
-        img = Image.fromarray(self.hdf5_file.get(recording)[index].reshape(self.resolution,self.resolution,3))
-        img = torchvision.transforms.functional.center_crop(img, (self.adj_resolution, self.adj_resolution))
+        img = Image.open(io.BytesIO(self.hdf5_file.get("data")[int(row["new_index"])]))
+
+
 
         if self.center_crop:
-            img = torchvision.transforms.functional.center_crop(img, (self.gaze_size, self.gaze_size))
+            img = torchvision.transforms.functional.center_crop(img, (gaze_size, gaze_size))
             return img, (row["gaze_x"], row["gaze_y"])
         else:
             adj_gaze_x, adj_gaze_y = row["gaze_x"], row["gaze_y"]
             ### We control the gaze the boundaries of the gaze to not go beyond the image boundaries
             gap_resolution = self.resolution - self.adj_resolution
-            adj_gaze_x += - max(0,adj_gaze_x + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_x - self.gaze_size//2 - gap_resolution)
-            adj_gaze_y += - max(0,adj_gaze_y + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_y - self.gaze_size//2 - gap_resolution)
-
+            adj_gaze_x += - max(0,adj_gaze_x + gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_x - gaze_size//2)
+            adj_gaze_y += - max(0,adj_gaze_y + gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_y - gaze_size//2)
+            # adj_gaze_x += - max(0,adj_gaze_x + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_x - self.gaze_size//2 - gap_resolution)
+            # adj_gaze_y += - max(0,adj_gaze_y + self.gaze_size//2 - self.adj_resolution) - min(0, adj_gaze_y - self.gaze_size//2 - gap_resolution)
             img = torchvision.transforms.functional.crop(img,
-                                                             adj_gaze_y - self.gaze_size//2,
-                                                             adj_gaze_x - self.gaze_size//2,
-                                                             self.gaze_size,
-                                                             self.gaze_size,
+                                                             adj_gaze_y - gaze_size//2,
+                                                             adj_gaze_x - gaze_size//2,
+                                                             gaze_size,
+                                                             gaze_size,
                                                          )
             return img, (adj_gaze_x, adj_gaze_y)
 
@@ -88,25 +99,25 @@ class Nymeria(Dataset):
         assert np.abs(np.linalg.norm(bef_rot) - 1) < 0.05
         assert np.abs(np.linalg.norm(aft_rot) -1) < 0.05
 
-        if self.version == 2:
-            return self.get_action_v2(bef_rot, aft_rot, bef_trans, aft_trans, gaze_before, gaze_after)
-
-        camera_rot = self.quaternion_multiply((aft_rot[0],-aft_rot[1],-aft_rot[2],-aft_rot[3]), (bef_rot[0],bef_rot[1],bef_rot[1],bef_rot[3])).squeeze()
-        camera_rot = np.concatenate((camera_rot[1:4], camera_rot[0:1]), axis=0)
-
-        translation = aft_trans- bef_trans
-        translation_rot = np.transpose(scipy.spatial.transform.Rotation.from_quat(quat=camera_rot).as_matrix())
-        translation = np.matmul(translation_rot, translation)
-
-        gaze_movement = np.array(gaze_after) - np.array(gaze_before)
-        gaze_movement /= self.adj_resolution - self.gaze_size
-
-        action = torch.tensor(np.concatenate(
-            (gaze_movement.astype(np.float32),
-            camera_rot.astype(np.float32),
-            translation.astype(np.float32)), axis=0
-        ))
-        return action
+        # if self.version == 2:
+        return self.get_action_v2(bef_rot, aft_rot, bef_trans, aft_trans, gaze_before, gaze_after)
+        #
+        # camera_rot = self.quaternion_multiply((aft_rot[0],-aft_rot[1],-aft_rot[2],-aft_rot[3]), (bef_rot[0],bef_rot[1],bef_rot[1],bef_rot[3])).squeeze()
+        # camera_rot = np.concatenate((camera_rot[1:4], camera_rot[0:1]), axis=0)
+        #
+        # translation = aft_trans- bef_trans
+        # translation_rot = np.transpose(scipy.spatial.transform.Rotation.from_quat(camera_rot).as_matrix())
+        # translation = np.matmul(translation_rot, translation)
+        #
+        # gaze_movement = np.array(gaze_after) - np.array(gaze_before)
+        # gaze_movement /= self.adj_resolution - self.gaze_size
+        #
+        # action = torch.tensor(np.concatenate(
+        #     (gaze_movement.astype(np.float32),
+        #     camera_rot.astype(np.float32),
+        #     translation.astype(np.float32)), axis=0
+        # ))
+        # return action
 
     def compute_relative_pose(self, R1, t1, R2, t2):
         # Compute relative rotation
@@ -118,12 +129,12 @@ class Nymeria(Dataset):
         return R_rel, t_rel
 
     def get_action_v2(self, r1, r2, t1, t2, g1, g2):
-        r1 = scipy.spatial.transform.Rotation.from_quat(quat=r1).as_matrix()
-        r2 = scipy.spatial.transform.Rotation.from_quat(quat=r2).as_matrix()
+        r1 = scipy.spatial.transform.Rotation.from_quat(r1).as_matrix()
+        r2 = scipy.spatial.transform.Rotation.from_quat(r2).as_matrix()
 
         r_rel, t_rel = self.compute_relative_pose(r1, t1, r2, t2)
 
-        r_rel = scipy.spatial.transform.Rotation.from_matrix(matrix=r_rel).as_quat()
+        r_rel = scipy.spatial.transform.Rotation.from_matrix(r_rel).as_quat()
         gaze_movement = np.array(g2) - np.array(g1)
         # if self.normalize:
         #     gaze_movement /= self.adj_resolution - self.gaze_size
@@ -137,13 +148,25 @@ class Nymeria(Dataset):
         action = (action - self.means)/self.stds
         return action
 
+    def get_gaze_sizes(self, row):
+        if self.min_gaze_size != 0:
+            g = random.randint(self.min_gaze_size, self.gaze_size)
+        else:
+            depth_value = row["corrected_gaze_depth"]
+            depth_value = depth_value if depth_value != -1 else 1
+            g = depth_value * self.gaze_size / 4
+
+        return g
     def __getitem__(self, idx):
+        # if not hasattr(self, 'hdf5_file'):
+        #     self.hdf5_file = h5py.File(self.hdf5_file_name, 'r')
+
 
         r = self.dataset.iloc[idx]
         video_name = r["file_id"]
 
-
-        image, adj_gaze_before = self.open_image(r)
+        g1 = self.get_gaze_sizes(r)
+        image, adj_gaze_before = self.open_image(r, g1)
 
         if self.time_window == 0:
             return self.transform(image, image), -1
@@ -157,8 +180,27 @@ class Nymeria(Dataset):
             rn = self.dataset.iloc[new_idx]
             new_video_name = rn["file_id"]
             try_cpt += 1
+        g2 = self.get_gaze_sizes(rn)
+        image_pair, adj_gaze_after = self.open_image(rn, g2) if new_idx != idx and g1 == g2 else (image, adj_gaze_before)
 
+        image_pair_action = None
+        if self.distinct_action:
+            # Action sample
+            new_video_name, new_idx, try_cpt = "", idx, 0
+            while video_name != new_video_name:
+                new_idx = idx + random.randint(-self.aa_time_window, self.aa_time_window)
+                new_idx = max(0, min(new_idx, self.size - 1))
+                if try_cpt > 10:
+                    new_idx = idx
+                rn = self.dataset.iloc[new_idx]
+                new_video_name = rn["file_id"]
+                try_cpt += 1
+            g2 = self.get_gaze_sizes(rn)
+            image_pair_action, adj_gaze_after = self.open_image(rn, g2) if new_idx != idx and g1 == g2 else (image, adj_gaze_before)
 
-        image_pair, adj_gaze_after = self.open_image(rn) if new_idx != idx else (image, adj_gaze_before)
         action = self.get_action(r, rn, adj_gaze_before, adj_gaze_after)
-        return self.transform(image, image_pair, action), -1
+        if self.min_gaze_size != self.gaze_size and self.size_gaze_aware:
+            action = torch.cat((action, torch.tensor([float(g2 - g1) / (self.gaze_size - self.min_gaze_size)])))
+        return self.transform(image, image_pair, image_pair_action, action), -1
+
+

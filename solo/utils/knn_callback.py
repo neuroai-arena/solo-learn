@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from solo.data.classification_dataloader import prepare_datasets, prepare_transforms
 from solo.utils.knn import WeightedKNNClassifier
+import torch.nn.functional as F
 
 
 class KNNCallback(pl.Callback):
@@ -60,7 +61,11 @@ class KNNCallback(pl.Callback):
 
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
+        if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs and trainer.current_epoch != 0:
+            self._run(trainer, pl_module)
+
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and trainer.current_epoch == 0:
             self._run(trainer, pl_module)
 
     def on_test_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
@@ -85,13 +90,16 @@ class KNNCallback(pl.Callback):
             pl_module.train()
 
             for k, value in result.items():
-                if hasattr(trainer.logger, 'log_metrics'):
-                    trainer.logger.log_metrics({
+                pl_module.log_dict(
+                # if hasattr(trainer.logger, 'log_metrics'):
+                #     trainer.logger.log_metrics(
+                    {
                         f'knn/{self.cfg.dataset}_{k}_top1': value[0],
                         f'knn/{self.cfg.dataset}_{k}_top5': value[1]
-                    }, step=trainer.global_step)
-                else:
-                    raise ValueError("Please use a logger that supports `log_metrics`")
+                    # }, step=trainer.global_step)
+                    }, sync_dist=True)
+                # else:
+                #     raise ValueError("Please use a logger that supports `log_metrics`")
 
     @torch.no_grad()
     def extract_features(self, loader: DataLoader, model: pl.LightningModule, mode: str = "train") -> Tuple[
@@ -110,11 +118,14 @@ class KNNCallback(pl.Callback):
             # mem_used_mb = (total - free) / 1024 ** 2
             # print(outs["feats"].shape, mem_used_mb)
 
+            feats = outs["feats"] if self.cfg.distance_fx != "cosine" else F.normalize(outs["feats"])
+
             if self.cfg.clone:
                 #Memory leak with vit and global pool token without the clone
-                res_X.append(outs["feats"].clone().detach())
+                feats = feats.clone().detach()
             else:
-                res_X.append(outs["feats"].detach())
+                feats = feats.detach()
+            res_X.append(feats)
             res_y.append(y.detach())
         res_X = torch.cat(res_X)
         res_y = torch.cat(res_y)
@@ -132,7 +143,7 @@ class KNNCallback(pl.Callback):
         for k in self.cfg.k:
             knn = WeightedKNNClassifier(k=k, T=self.cfg.T, distance_fx=self.cfg.distance_fx)
             knn(X_train, y_train, X_test, y_test)
-            val_knn_acc1, val_knn_acc5 = knn.compute()
+            val_knn_acc1, val_knn_acc5 = knn.compute(normalize=False)
             result[k] = (val_knn_acc1, val_knn_acc5)
             del knn
 

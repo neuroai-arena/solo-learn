@@ -100,7 +100,7 @@ class WeightedKNNClassifier(Metric):
             self.test_targets.append(test_targets.detach())
 
     @torch.no_grad()
-    def compute(self) -> Tuple[float]:
+    def compute(self, normalize=True) -> Tuple[float]:
         """Computes weighted k-NN accuracy @1 and @5. If cosine distance is selected,
         the weight is computed using the exponential of the temperature scaled cosine
         distance of the samples. If euclidean distance is selected, the weight corresponds
@@ -119,7 +119,7 @@ class WeightedKNNClassifier(Metric):
         test_features = torch.cat(self.test_features)
         test_targets = torch.cat(self.test_targets)
 
-        if self.distance_fx == "cosine":
+        if self.distance_fx == "cosine" and normalize:
             train_features = F.normalize(train_features)
             test_features = F.normalize(test_features)
 

@@ -5,7 +5,7 @@ from omegaconf import OmegaConf, ListConfig
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import omegaconf_select
-from solo.args.linear import _SUPPORTED_DATASETS as _CLF_SUPPORTED_DATASETS
+from solo.args.linear import _N_CLASSES_PER_DATASET as _CLF_N_CLASSES_PER_DATASET
 
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule
@@ -34,19 +34,19 @@ _N_CLASSES_PER_DATASET = {
     "nymeria": 0
 }
 
-_SUPPORTED_DATASETS = [
-    "cifar10",
-    "cifar100",
-    "stl10",
-    "imagenet",
-    "imagenet100",
-    "custom",
-    "imagenet2",
-    "imagenet2_100",
-    "tiny",
-    "ego4d",
-    "nymeria"
-]
+# _SUPPORTED_DATASETS = [
+#     "cifar10",
+#     "cifar100",
+#     "stl10",
+#     "imagenet",
+#     "imagenet100",
+#     "custom",
+#     "imagenet2",
+#     "imagenet2_100",
+#     "tiny",
+#     "ego4d",
+#     "nymeria"
+# ]
 
 
 def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -62,7 +62,10 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert not OmegaConf.is_missing(cfg, "data.dataset")
     assert not OmegaConf.is_missing(cfg, "data.train_path")
 
-    assert cfg.data.dataset in _SUPPORTED_DATASETS
+    # assert cfg.data.dataset in _SUPPORTED_DATASETS
+    _supported_datasets = list(_N_CLASSES_PER_DATASET.keys())
+    # assert cfg.data.dataset in _SUPPORTED_DATASETS, f"Use one of {_SUPPORTED_DATASETS}"
+    assert cfg.data.dataset in _supported_datasets, f"Use one of {_supported_datasets}"
 
     # if validation path is not available, assume that we want to skip eval
     cfg.data.val_path = omegaconf_select(cfg, "data.val_path", None)
@@ -88,7 +91,7 @@ def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert not OmegaConf.is_missing(cfg, "knn_clb.dataset")
     assert not OmegaConf.is_missing(cfg, "knn_clb.train_path")
     assert not OmegaConf.is_missing(cfg, "knn_clb.val_path")
-    assert cfg.knn_clb.dataset in _CLF_SUPPORTED_DATASETS
+    assert cfg.knn_clb.dataset in list( _CLF_N_CLASSES_PER_DATASET.keys())
 
     cfg.knn_clb.format = omegaconf_select(cfg, "knn_clb.format", "image_folder")
     cfg.knn_clb.batch_size = omegaconf_select(cfg, "knn_clb.batch_size", 32)
@@ -208,6 +211,9 @@ def parse_cfg(cfg: omegaconf.DictConfig):
             num_large_crops += pipeline.num_crops
         else:
             num_small_crops += pipeline.num_crops
+
+    if hasattr(cfg.data.dataset_kwargs, "distinct_action") and cfg.data.dataset_kwargs.distinct_action:
+        num_large_crops += 1
     cfg.data.num_large_crops = num_large_crops
     cfg.data.num_small_crops = num_small_crops
 
@@ -242,4 +248,13 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
 
+    cfg.frankenstein_clb = omegaconf_select(cfg, "frankenstein_clb", {})
+    cfg.frankenstein_clb.enabled = omegaconf_select(cfg, "frankenstein_clb.enabled", False)
+    cfg.frankenstein_clb.freq_epochs = omegaconf_select(cfg, "frankenstein_clb.freq_epochs", 5)
+    cfg.frankenstein_clb.path = omegaconf_select(cfg, "frankenstein_clb.path", "/home/aubret/frankenstein/")
+
+    cfg.shapebias_clb = omegaconf_select(cfg, "shapebias_clb", {})
+    cfg.shapebias_clb.enabled = omegaconf_select(cfg, "shapebias_clb.enabled", False)
+    cfg.shapebias_clb.freq_epochs = omegaconf_select(cfg, "shapebias_clb.freq_epochs", 5)
+    cfg.shapebias_clb.path = omegaconf_select(cfg, "shapebias_clb.path", "/home/aubret/shapebias/")
     return cfg

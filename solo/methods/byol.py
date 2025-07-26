@@ -26,8 +26,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 from solo.losses.byol import byol_loss_func
 from solo.methods.base import BaseMomentumMethod
+from solo.utils.misc import omegaconf_select
 from solo.utils.momentum import initialize_momentum_params
 
+
+class MultiLayerProj(nn.Module):
+    def __init__(self, n, in_feature, hidden_feature, out_feature, *args, bias=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        layers = []
+        for i in range(n):
+            in_f = in_feature if i == 0 else hidden_feature
+            layers.append(nn.Linear(in_f, hidden_feature, bias=bias))
+            layers.append(nn.BatchNorm1d(hidden_feature))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(hidden_feature if n > 0 else in_feature, out_feature))
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.layers(x)
 
 class BYOL(BaseMomentumMethod):
     def __init__(self, cfg: omegaconf.DictConfig):
@@ -46,30 +62,15 @@ class BYOL(BaseMomentumMethod):
         proj_output_dim: int = cfg.method_kwargs.proj_output_dim
         pred_hidden_dim: int = cfg.method_kwargs.pred_hidden_dim
 
-        # projector
-        self.projector = nn.Sequential(
-            nn.Linear(self.features_dim, proj_hidden_dim),
-            nn.BatchNorm1d(proj_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(proj_hidden_dim, proj_output_dim),
-        )
+        cfg.method_kwargs.n_layer = omegaconf_select(cfg, "method_kwargs.n_layer", 1)
+        cfg.method_kwargs.n_layer_pred = omegaconf_select(cfg, "method_kwargs.n_layer_pred", 1)
 
-        # momentum projector
-        self.momentum_projector = nn.Sequential(
-            nn.Linear(self.features_dim, proj_hidden_dim),
-            nn.BatchNorm1d(proj_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(proj_hidden_dim, proj_output_dim),
-        )
-        initialize_momentum_params(self.projector, self.momentum_projector)
+        self.projector = MultiLayerProj(cfg.method_kwargs.n_layer, self.features_dim, proj_hidden_dim,proj_output_dim, bias=False)
+        self.momentum_projector = MultiLayerProj(cfg.method_kwargs.n_layer, self.features_dim, proj_hidden_dim,proj_output_dim, bias=False)
+        initialize_momentum_params(self.projector, self.momentum_projector, cfg=cfg)
 
-        # predictor
-        self.predictor = nn.Sequential(
-            nn.Linear(proj_output_dim, pred_hidden_dim),
-            nn.BatchNorm1d(pred_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(pred_hidden_dim, proj_output_dim),
-        )
+        self.predictor = MultiLayerProj(cfg.method_kwargs.n_layer_pred, proj_output_dim, pred_hidden_dim,proj_output_dim, bias=False)
+
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:

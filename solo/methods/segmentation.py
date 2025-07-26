@@ -45,26 +45,28 @@ class SegmentationHead(nn.Module):
         return self.classifier(x) # (bs, c, h, w) -> (bs, num_classes, h, w)
 
 
+def fix_pos_embedding(backbone, img_size):
+    if img_size != backbone.patch_embed.img_size:
+        print("Resampling position embeddings to fit new image size {}".format(img_size))
+
+        new_H = img_size[0] // backbone.patch_embed.patch_size[0]
+        new_W = img_size[1] // backbone.patch_embed.patch_size[1]
+
+        backbone.patch_embed.strict_img_size = False
+        backbone.patch_embed.img_size = img_size
+        backbone.patch_embed.grid_size = (new_H, new_W)
+
+        backbone.pos_embed = torch.nn.Parameter(
+            resample_abs_pos_embed(backbone.pos_embed, new_size=[new_H, new_W],
+                                   num_prefix_tokens=backbone.num_prefix_tokens,
+                                   verbose=True))
+
 class SegmentationModel(LinearModel):
     def __init__(self, backbone: nn.Module, cfg: DictConfig):
         super().__init__(backbone, cfg)
 
         img_size = (cfg.data.augmentations.img_size, cfg.data.augmentations.img_size)
-        if img_size !=self.backbone.patch_embed.img_size:
-            print("Resampling position embeddings to fit new image size {}".format(img_size))
-
-            new_H = img_size[0] // self.backbone.patch_embed.patch_size[0]
-            new_W = img_size[1] // self.backbone.patch_embed.patch_size[1]
-
-            self.backbone.patch_embed.strict_img_size = False
-            self.backbone.patch_embed.img_size = img_size
-            self.backbone.patch_embed.grid_size = (new_H, new_W)
-
-            self.backbone.pos_embed = torch.nn.Parameter(
-                resample_abs_pos_embed(self.backbone.pos_embed, new_size=[new_H, new_W],
-                                       num_prefix_tokens=self.backbone.num_prefix_tokens,
-                                       verbose=True))
-
+        fix_pos_embedding(self.backbone, img_size)
         if hasattr(self.backbone, "patch_embed"):  # transformer backbone
             feat_heigth, feat_width = getattr(self.backbone.patch_embed, "grid_size")
         else:

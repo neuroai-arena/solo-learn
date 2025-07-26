@@ -63,7 +63,7 @@ class ImgnetDataset(Dataset):
             idx, '4']
         # img = Image.open("../datasets/imgnet/train/ILSVRC2012_val_00012562_n07697313.JPEG")
         if self.mode == "val":
-            img = Image.open(io.BytesIO(self.hdf5_file.get(f"data2_{begin}")[h5_index]))
+                img = Image.open(io.BytesIO(self.hdf5_file.get(f"data2_{begin}")[h5_index]))
         else:
             img = Image.open(io.BytesIO(self.hdf5_file.get("images")[h5_index]))
             # h5_index = h5_index%50000

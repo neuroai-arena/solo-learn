@@ -109,6 +109,36 @@ class GaussianBlur:
         img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
         return img
 
+class GreyGaussianBlur:
+    def __init__(self, sigma: Sequence[float] = None):
+        """Gaussian blur as a callable object.
+
+        Args:
+            sigma (Sequence[float]): range to sample the radius of the gaussian blur filter.
+                Defaults to [0.1, 2.0].
+        """
+
+        if sigma is None:
+            sigma = [0.1, 2.0]
+
+        self.sigma = sigma
+
+    def __call__(self, img: Image) -> Image:
+        """Applies gaussian blur to an input image.
+
+        Args:
+            img (Image): an image in the PIL.Image format.
+
+        Returns:
+            Image: blurred image.
+        """
+        img = torchvision.transforms.functional.rgb_to_grayscale(img, num_output_channels=3)
+        if not isinstance(self.sigma, (float, int)):
+            sigma = random.uniform(self.sigma[0], self.sigma[1])
+        else:
+            sigma = self.sigma
+        img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return img
 
 class Solarization:
     """Solarization as a callable object."""
@@ -125,6 +155,40 @@ class Solarization:
 
         return ImageOps.solarize(img)
 
+
+class RandomResizedCropWithParams:
+    dim = 4
+    def __init__(self, size, scale, ratio=(3.0 / 4.0, 4.0 / 3.0), interpolation=transforms.InterpolationMode.BICUBIC):
+        self.scale = scale
+        self.ratio = ratio
+        self.size = size if isinstance(size, tuple) else (size, size)
+        self.crop = transforms.RandomResizedCrop(size=size, scale=scale, ratio=self.ratio, interpolation=interpolation)
+
+    def __call__(self, img):
+        w, h = img.size
+        params = self.crop.get_params(img, scale=self.scale, ratio=self.ratio)
+        tparams = torch.tensor(params, dtype=torch.float32)
+        out = transforms.functional.crop(img, *params)
+        out = transforms.functional.resize(out, self.size, interpolation=transforms.functional.InterpolationMode.BICUBIC)
+
+        # print(tparams)
+        tparams[0] = (tparams[0] + 0.5*tparams[2])/ w
+        tparams[1] = (tparams[1] + 0.5*tparams[3])/ h
+        # print(tparams)
+        return out, tparams
+
+class ComposedAugsWithParams(transforms.Compose):
+
+    def __call__(self, img):
+        params = []
+        for t in self.transforms:
+            img = t(img)
+            if isinstance(img, tuple):
+                img, params_temp = img
+                params.append(params_temp)
+        if params:
+            return img, torch.cat(params)
+        return [img, params]
 
 class Equalization:
     def __call__(self, img: Image) -> Image:
@@ -172,7 +236,7 @@ class FullTransformPipeline:
                 interpolation=torchvision.transforms.InterpolationMode.BICUBIC,
             )
 
-    def __call__(self, x: Image, x2: Image = None, action = None) -> List[torch.Tensor]:
+    def __call__(self, x: Image, x2: Image = None, x3: Image = None, action = None) -> List[torch.Tensor]:
         """Applies transforms n times to generate n crops.
 
         Args:
@@ -182,7 +246,24 @@ class FullTransformPipeline:
             List[torch.Tensor]: an image in the tensor format.
         """
         out = []
-        if x2 is not None:
+        if x2 is not None and x3 is not None:
+            if self.same_augmentations == 2:
+                x = self.crop_resize(x)
+                x2 = self.crop_resize(x2)
+                x3 = self.crop_resize(x3)
+
+            state = torch.get_rng_state()
+            out.extend(self.transforms[0](x))
+            if self.same_augmentations:
+                torch.set_rng_state(state)
+            out.extend(self.transforms[1](x2))
+            if self.same_augmentations:
+                torch.set_rng_state(state)
+            out.extend(self.transforms[1](x3))
+            for t in self.transforms[3:]:
+                # out.extend(transform(random.choice([x, x2])))
+                out.extend(t(random.choice([x, x2, x3])))
+        elif x2 is not None:
             if self.same_augmentations == 2:
                 x = self.crop_resize(x)
                 x2 = self.crop_resize(x2)
@@ -192,9 +273,10 @@ class FullTransformPipeline:
             if self.same_augmentations:
                 torch.set_rng_state(state)
             out.extend(self.transforms[1](x2))
+
             for t in self.transforms[2:]:
                 # out.extend(transform(random.choice([x, x2])))
-                out.extend(t(x, x2))
+                out.extend(t(random.choice([x, x2])))
         else:
             for transform in self.transforms:
                 out.extend(transform(x))
@@ -251,15 +333,25 @@ def build_transform_pipeline(dataset, cfg):
         dataset, (cfg.get("mean", IMAGENET_DEFAULT_MEAN), cfg.get("std", IMAGENET_DEFAULT_STD))
     )
 
+    crop_func = transforms.RandomResizedCrop
+    if hasattr(cfg.rrc, "params") and cfg.rrc.params:
+        crop_func = RandomResizedCropWithParams
+
+
     augmentations = []
 
     if hasattr(cfg, "global_gaussian_blur") and cfg.global_gaussian_blur.enabled:
         print("ADDING global_gaussian_blur wiht sigma", cfg.global_gaussian_blur.sigma)
         augmentations.append(GaussianBlur(sigma=cfg.global_gaussian_blur.sigma))
 
+    if hasattr(cfg, "greyscaled_global_gaussian_blur") and cfg.greyscaled_global_gaussian_blur.enabled:
+        print("ADDING greyscaled_global_gaussian_blur wiht sigma", cfg.greyscaled_global_gaussian_blur.sigma)
+        augmentations.append(GreyGaussianBlur(sigma=cfg.greyscaled_global_gaussian_blur.sigma))
+
+
     if cfg.rrc.enabled:
         augmentations.append(
-            transforms.RandomResizedCrop(
+            crop_func(
                 cfg.crop_size,
                 scale=(cfg.rrc.crop_min_scale, cfg.rrc.crop_max_scale),
                 interpolation=transforms.InterpolationMode.BICUBIC,
@@ -306,7 +398,9 @@ def build_transform_pipeline(dataset, cfg):
     augmentations.append(transforms.ToTensor())
     augmentations.append(transforms.Normalize(mean=mean, std=std))
 
-    augmentations = transforms.Compose(augmentations)
+    # augmentations = transforms.Compose(augmentations)
+    augmentations = ComposedAugsWithParams(augmentations)
+
     return augmentations
 
 

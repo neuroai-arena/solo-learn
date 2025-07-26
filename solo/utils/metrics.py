@@ -20,6 +20,7 @@
 from typing import Dict, List, Sequence
 
 import torch
+from torch import nn
 
 
 def accuracy_at_k(
@@ -50,6 +51,66 @@ def accuracy_at_k(
             correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+
+
+def RMSLELoss(pred, actual, valid_mask):
+    # valid_mask = (actual > 0.01) & (pred > 0.01)
+    return torch.sqrt(((torch.log(pred + 1) - torch.log(actual + 1)) ** 2)[valid_mask].mean() )
+
+def RMSELoss(y, target, valid_mask):
+    return torch.sqrt(torch.mean(((target- y) ** 2)[valid_mask]))
+
+def Rel(pred, gt, valid_mask=None):
+    """
+    Compute Absolute Relative Error (Abs Rel) for depth prediction.
+
+    Args:
+        pred (torch.Tensor): predicted depth map, shape (B, H, W)
+        gt (torch.Tensor): ground truth depth map, shape (B, H, W)
+        mask (torch.Tensor or None): optional binary mask of valid pixels (B, H, W)
+
+    Returns:
+        abs_rel (float): average Abs Rel across batch
+    """
+    # Ensure predictions and GTs are float
+    pred = pred.float()
+    gt = gt.float()
+
+
+    # Compute absolute relative error
+    abs_rel = torch.abs(pred - gt) / gt
+    abs_rel = abs_rel[valid_mask]
+
+    sq_rel = ((pred - gt)** 2) / gt
+    sq_rel = sq_rel[valid_mask]
+
+    # valid_mask = (pred > 0.01) & (gt > 0.01)
+    log_diff = torch.log(pred[valid_mask]) - torch.log(gt[valid_mask])
+
+    if log_diff.numel() == 0:
+        silog = float('nan')
+    else:
+        silog = log_diff.pow(2).mean() - log_diff.mean().pow(2)
+
+    return (abs_rel.mean() if abs_rel.numel() > 0 else float('nan'),
+            sq_rel.mean() if sq_rel.numel() > 0 else float('nan'),
+            silog)
+
+
+
+
+def depth_metrics(outputs: torch.Tensor, targets: torch.Tensor):
+    # mask = (targets > 0.01) & (targets < 0.99)
+    mask = targets > 0.01
+    outputs =  torch.nn.functional.interpolate(outputs, size=(targets.shape[2], targets.shape[3]), mode='bilinear',
+                                                align_corners=False)
+
+    rmse = RMSELoss(outputs, targets, mask)
+    rmsle = RMSLELoss(outputs, targets, mask)
+    absrel, sqrl, silog = Rel(outputs, targets, mask)
+
+    return rmse, rmsle, absrel, sqrl, silog
 
 
 def weighted_mean(outputs: List[Dict], key: str, batch_size_key: str) -> float:

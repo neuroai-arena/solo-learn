@@ -20,6 +20,8 @@ import warnings
 
 import omegaconf.listconfig
 
+from solo.methods.segmentation import fix_pos_embedding
+
 # Suppress the specific warning
 warnings.filterwarnings(
     "ignore",
@@ -48,6 +50,7 @@ from solo.methods.linear import LinearModel
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous
+from torchmetrics.segmentation import MeanIoU
 
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
@@ -118,10 +121,12 @@ def main(cfg: DictConfig):
             del state[k]
 
         _keys = backbone.load_state_dict(state, strict=False)
+        # if "vit" in cfg.backbone.name:
+        #     fix_pos_embedding(backbone, (cfg.data.augmentations.img_size, cfg.data.augmentations.img_size))
         # print(_keys)
         logging.info(f"Loaded {ckpt_path}")
         if cfg.use_projector:
-            projector = build_mlp(len([k for k in projector_state.keys() if "weight" in k])//2 +1, 2048, 4096, 256, True)
+            projector = build_mlp(len([k for k in projector_state.keys() if "weight" in k])//2 +1,  cfg.projector.proj_input_dim, cfg.projector.proj_hidden_dim, cfg.projector.proj_output_dim, True)
             projector.load_state_dict(projector_state, strict=True)
             class model(nn.Module):
                 def __init__(self, backbone, head, *args, **kwargs):
@@ -152,8 +157,23 @@ def main(cfg: DictConfig):
         loss_func = SoftTargetCrossEntropy()
     elif cfg.label_smoothing > 0:
         loss_func = LabelSmoothingCrossEntropy(smoothing=cfg.label_smoothing)
-    elif isinstance(cfg.data.num_classes, tuple) or isinstance(cfg.data.num_classes, omegaconf.listconfig.ListConfig):
-        loss_func = torch.nn.MSELoss()
+    elif isinstance(cfg.data.num_classes, omegaconf.listconfig.ListConfig) and cfg.data.num_classes[0] == 1:
+        # assert cfg.precision==32, "Depth estimation does not work with 16 precision, probably because of interpolate (cf. torch webpage)"
+        class DepthLoss(nn.Module):
+            def forward(self, pred, target):
+                print(torch.max(pred), torch.max(target), torch.min(target), torch.min(pred))
+                # mask = (target > 0.01) & (target < 0.99)
+                mask = target > 0.01
+                pred = torch.nn.functional.interpolate(pred, size=target.shape[2:], mode='bilinear', align_corners=False)
+                return (pred[mask] - target[mask].detach()).abs().mean()
+        # loss_func = torch.nn.MSELoss()
+        loss_func = DepthLoss()
+    elif isinstance(cfg.data.num_classes, omegaconf.listconfig.ListConfig) and cfg.data.num_classes[0] != 1:
+        class SegmLoss(nn.Module):
+            def forward(self, pred, target):
+                pred = torch.nn.functional.interpolate(pred, size=target.shape[2:], mode="bilinear", align_corners=False)
+                return torch.nn.functional.cross_entropy(pred.squeeze(), target.long().squeeze(), ignore_index=0)
+        loss_func = SegmLoss()
     else:
         loss_func = torch.nn.CrossEntropyLoss()
 

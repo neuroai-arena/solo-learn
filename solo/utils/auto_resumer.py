@@ -98,12 +98,10 @@ class AutoResumer:
         if candidates:
             # sort by most recent
             candidates = sorted(candidates, key=lambda ck: ck.creation_time, reverse=True)
-
             for candidate in candidates:
                 if not Path(candidate.args).exists():
                     continue
                 candidate_cfg = DictConfig(json.load(open(candidate.args)))
-
                 if all(
                     omegaconf_select(candidate_cfg, param, None)
                     == omegaconf_select(cfg, param, None)

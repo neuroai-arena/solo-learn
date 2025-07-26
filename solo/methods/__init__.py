@@ -27,6 +27,7 @@ from solo.methods.mae import MAE
 from solo.methods.mocov2plus import MoCoV2Plus
 from solo.methods.mocov3 import MoCoV3
 from solo.methods.mocov3aa import AAMoCoV3
+from solo.methods.mocov3aaplus import AAMoCoV3Plus
 from solo.methods.mocov3ciper import CiperMoCoV3
 from solo.methods.nnbyol import NNBYOL
 from solo.methods.nnclr import NNCLR
@@ -39,6 +40,7 @@ from solo.methods.supcon import SupCon
 from solo.methods.swav import SwAV
 from solo.methods.vibcreg import VIbCReg
 from solo.methods.vicreg import VICReg
+from solo.methods.vicregaa import AAVICReg
 from solo.methods.wmse import WMSE
 from solo.methods.all4one import All4One
 
@@ -56,6 +58,7 @@ METHODS = {
     "mocov2plus": MoCoV2Plus,
     "mocov3": MoCoV3,
     "aamocov3": AAMoCoV3,
+    "aamocov3+": AAMoCoV3Plus,
     "cipermocov3": CiperMoCoV3,
     "aasimclr": AASimCLR,
     "nnbyol": NNBYOL,
@@ -68,6 +71,7 @@ METHODS = {
     "swav": SwAV,
     "vibcreg": VIbCReg,
     "vicreg": VICReg,
+    "aavicreg": AAVICReg,
     "wmse": WMSE,
     "all4one": All4One,
 }
@@ -79,7 +83,7 @@ __all__ = [
     "DINO",
     "MAE",
     "LinearModel",
-    "MoCoV2Plus",
+    "MoCoV2",
     "MoCoV3",
     "NNBYOL",
     "NNCLR",
@@ -94,6 +98,8 @@ __all__ = [
     "WMSE",
     "All4One",
     "AAMoCoV3",
+    "AAMoCoV3Plus",
     "AASimCLR",
+    "AAVICReg",
     "CiperMoCoV3"
 ]

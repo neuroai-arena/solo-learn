@@ -57,7 +57,7 @@ def main(cfg: DictConfig):
         if "backbone" in k:
             state[k.replace("backbone.", "")] = state[k]
         del state[k]
-    backbone.load_state_dict(state, strict=False)
+    keys = backbone.load_state_dict(state, strict=False)
     logging.info(f"Loaded {ckpt_path}")
 
     model = SegmentationModel(backbone, cfg)

@@ -11,89 +11,54 @@ hydra:
   run:
     dir: .
 
-name: "aamocov3-nymeria"
-method: "aamocov3"
+name: "mocov3-ego4d"
+method: "mocov3"
 backbone:
   name: "resnet50"
 method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
   pred_hidden_dim: 4096
-  temperature: 0.2
-  aa_layers: 3
-  aa_layers_pred: 3
-  aa_hidden_dim: 4096
-  aa_weight: 1
-  aa_temperature: 0.2
 momentum:
   base_tau: 0.996
   final_tau: 0.996
 data:
-  dataset: nymeria
-  train_path: "/home/aubret/nymeria_dataset/"
+  dataset: ego4d
+  train_path: "/scratch/modelrep/schaumloeffel/Ego4d/"
   val_path: None
   format: "h5"
-  num_workers: 4
+  num_workers: 8
   dataset_kwargs:
     gaze_size: 224
-    time_window: 5
+    time_window: 15
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
-    resolution: 512
-    version: 3
-    fps: 5
 optimizer:
   name: "lars"
-  batch_size: 128
+  batch_size: 64
   lr: 1.6
   classifier_lr: 3e-3
   weight_decay: 1e-6
   no_labels: True
 scheduler:
   name: "warmup_cosine"
-  warmup_epochs: 1
+  warmup_epochs: 0.01
 checkpoint:
   enabled: True
-  dir: "/scratch_shared/aubret/trained_models2"
+  dir: "trained_models"
   frequency: 1
-  keep_prev: False
-  save_last: True
+  keep_prev: True
+  every_n_iter: 5000
 auto_resume:
   enabled: True
-
-knn_clb:
-  enabled: True
-  verbose: True
-  dataset: imagenet_42
-  k:
-    - 10
-    - 20
-    - 50
-    - 100
-  perform_on_validation: True
-  val_path: /home/aubret/
-  train_path: /home/aubret/
-  format: h5
-  delay_epochs: 1
-  freq_epochs: 1
-
-shapebias_clb:
-  enabled: True
-  path: /home/aubret/shapebias/
-  freq_epochs: 1
-
-frankenstein_clb:
-  enabled: True
-  path: /home/aubret/frankenstein/
-  freq_epochs: 1
-
 # overwrite PL stuff
-max_epochs: 10
-devices: 4
+max_epochs: 1
+devices: 8
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
 no_validation: True
 limit_val_batches: 0
 num_sanity_val_steps: 0
+val_check_interval: 5000
 log_every_n_steps: 50

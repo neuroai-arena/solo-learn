@@ -29,6 +29,7 @@ _N_CLASSES_PER_DATASET = {
     "imagenet_42": 1000,
     "imagenet100_42": 100,
     "imagenet100_im": 100,
+    "imagenet_im":1000,
     "tiny": 200,
     "core50": 50,
     "DTD": 47,
@@ -50,46 +51,49 @@ _N_CLASSES_PER_DATASET = {
     "toybox": 348,
     'core50_bg': 11,
     'COIL100': 100,
-    "SUN_rgbd": (3, 224, 224)
+    "SUN_rgbd": (1, 224, 224),
+    "NYUv2": (1, 228, 304),
+    "PascalVOC": (21, 224, 224)
 }
 
-_SUPPORTED_DATASETS = [
-    "cifar10",
-    "cifar100",
-    "cifar10_224",
-    "cifar100_224",
-    "imagenet",
-    "imagenet100",
-    "imagenet2",
-    "imagenet2_100",
-    "imagenet_42",
-    "imagenet100_42",
-    "imagenet100_im",
-    'core50',
-    "custom",
-    "DTD",
-    'Flowers102',
-    'FGVCAircraft',
-    'Food101',
-    'OxfordIIITPet',
-    'Places365',
-    'StanfordCars',
-    "STL10",
-    "Places365_h5",
-    "SUN397",
-    "Caltech101",
-    "imagenet1pct_42",
-    "imagenet10pct_42",
-    "toybox",
-    "core50_bg",
-    "feat",
-    "COIL100",
-    "STL10_224",
-    "STL10_FG_224",
-    "STL10_FG",
-    "tiny",
-    "SUN_rgbd"
-]
+# _SUPPORTED_DATASETS = [
+#     "cifar10",
+#     "cifar100",
+#     "cifar10_224",
+#     "cifar100_224",
+#     "imagenet",
+#     "imagenet100",
+#     "imagenet2",
+#     "imagenet2_100",
+#     "imagenet_42",
+#     "imagenet100_42",
+#     "imagenet100_im",
+#     'core50',
+#     "custom",
+#     "DTD",
+#     'Flowers102',
+#     'FGVCAircraft',
+#     'Food101',
+#     'OxfordIIITPet',
+#     'Places365',
+#     'StanfordCars',
+#     "STL10",
+#     "Places365_h5",
+#     "SUN397",
+#     "Caltech101",
+#     "imagenet1pct_42",
+#     "imagenet10pct_42",
+#     "toybox",
+#     "core50_bg",
+#     "feat",
+#     "COIL100",
+#     "STL10_224",
+#     "STL10_FG_224",
+#     "STL10_FG",
+#     "tiny",
+#     "SUN_rgbd",
+#     "NYUv2"
+# ]
 
 
 def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -106,7 +110,9 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert not OmegaConf.is_missing(cfg, "data.train_path")
     assert not OmegaConf.is_missing(cfg, "data.val_path")
 
-    assert cfg.data.dataset in _SUPPORTED_DATASETS, f"Use one of {_SUPPORTED_DATASETS}"
+    _supported_datasets = list(_N_CLASSES_PER_DATASET.keys())
+    # assert cfg.data.dataset in _SUPPORTED_DATASETS, f"Use one of {_SUPPORTED_DATASETS}"
+    assert cfg.data.dataset in _supported_datasets, f"Use one of {_supported_datasets}"
 
     cfg.data.format = omegaconf_select(cfg, "data.format", "image_folder")
     cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
@@ -272,6 +278,11 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
     cfg.use_projector = omegaconf_select(cfg, "use_projector", False)
+    cfg.projector = omegaconf_select(cfg, "projector", {})
+    cfg.projector.layers = omegaconf_select(cfg, "projector.layers", 3)
+    cfg.projector.proj_hidden_dim = omegaconf_select(cfg, "projector.proj_hidden_dim", 4096)
+    cfg.projector.proj_output_dim = omegaconf_select(cfg, "projector.proj_output_dim", 256)
+    cfg.projector.proj_input_dim = omegaconf_select(cfg, "projector.proj_input_dim", 2048)
 
     cfg = add_and_assert_aug_cfg(cfg)
     return cfg

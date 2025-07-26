@@ -1,3 +1,5 @@
+from typing import Dict, Sequence, Any
+
 import numpy as np
 import torch
 from torch import nn
@@ -12,6 +14,8 @@ class Predictor(nn.Module):
 
         self.predictor = Decoder(dim=embed_dim, depth=depth, heads=num_heads)
 
+
+
     def forward(self, context_encoding, target_masks):
         x = torch.cat((context_encoding, target_masks), dim=1)
         x = self.predictor(x)
@@ -24,11 +28,14 @@ class IJEPA(BaseMomentumMethod):
         super().__init__(cfg)
         cfg.method_kwargs.num_heads = omegaconf_select(cfg, "method_kwargs.num_heads", 6)
         cfg.method_kwargs.depth = omegaconf_select(cfg, "method_kwargs.depth", 8)
-
+        self.M = 4
+        self.patch_dim  = (16, 16)
         self.predictor = Predictor(self.features_dim, cfg.method_kwargs.num_heads, cfg.method_kwargs.depth)
+        self.mask_token = nn.Parameter(torch.randn(1, 1, self.features_dim))
+        self.num_tokens = 16 * 16
+        self.pos_embedding = (nn.Parameter(torch.randn(1, self.num_tokens, self.features_dim))
 
-
-    @staticmethod
+    @staticmethod)
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
         """Adds method specific default values/checks for config.
 
@@ -86,6 +93,7 @@ class IJEPA(BaseMomentumMethod):
                 for j in range(block_w):
                     patches.append(start_patch + i * patch_w + j)
                     if start_patch + i * patch_w + j not in all_patches:
+                        #indexes of target patches
                         all_patches.append(start_patch + i * patch_w + j)
 
             # get the target block
@@ -123,22 +131,28 @@ class IJEPA(BaseMomentumMethod):
             Dict[str, Any]: a dict containing the outputs of the parent and the projected features.
         """
         # if mode is test, we get return full embedding:
-        if self.mode == 'test':
-            return self.backbone(x)
+        if not self.backbone.training:
+            feats = self.backbone(X)
+            out = {"feats": feats}
+            if not self.cfg.no_validation:
+                logits = self.classifier(feats.detach())
+                out.update({"logits": logits})
 
-        target_aspect_ratio = np.random.uniform(self.target_aspect_ratio[0], self.target_aspect_ratio[1])
-        target_scale = np.random.uniform(self.target_scale[0], self.target_scale[1])
+            return out
+
+
         context_aspect_ratio = self.context_aspect_ratio
         context_scale = np.random.uniform(self.context_scale[0], self.context_scale[1])
+        target_aspect_ratio = np.random.uniform(self.target_aspect_ratio[0], self.target_aspect_ratio[1])
+        target_scale = np.random.uniform(self.target_scale[0], self.target_scale[1])
 
-        # #get target embeddings
-        target_blocks, target_patches, all_patches = self.get_target_block(self.teacher_encoder, x, self.patch_dim,
+        target_blocks, target_patches, all_patches = self.get_target_block(self.momentum_backbone, x, self.patch_dim,
                                                                            target_aspect_ratio, target_scale, self.M)
+
         m, b, n, e = target_blocks.shape
         # get context embedding
-
         context_block = self.get_context_block(x, self.patch_dim, context_aspect_ratio, context_scale, all_patches)
-        context_encoding = self.student_encoder(context_block)
+        context_encoding = self.backbone(context_block)
         context_encoding = self.norm(context_encoding)
 
         prediction_blocks = torch.zeros((m, b, n, e)).cuda()
@@ -149,26 +163,19 @@ class IJEPA(BaseMomentumMethod):
             target_masks = target_masks + target_pos_embedding
             prediction_blocks[i] = self.predictor(context_encoding, target_masks)
 
-        return prediction_blocks, target_blocks
+        out = {"feats": context_encoding.mean(dim=1),
+               "prediction_blocks": prediction_blocks,
+               "target_blocks": target_blocks
+               }
+        if not self.cfg.no_validation:
+            logits = self.classifier(out["feats"].detach())
+            out.update({"logits": logits})
         return out
 
 
     @torch.no_grad()
     def momentum_forward(self, X: torch.Tensor) -> Dict:
-        """Performs the forward pass of the momentum backbone and projector.
-
-        Args:
-            X (torch.Tensor): batch of images in tensor format.
-
-        Returns:
-            Dict[str, Any]: a dict containing the outputs of
-                the parent and the momentum projected features.
-        """
-
-        out = super().momentum_forward(X)
-        z = self.momentum_projector(out["feats"])
-        out.update({"z": z})
-        return out
+        return {}
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
         """Training step for BYOL reusing BaseMethod training step.
@@ -183,25 +190,9 @@ class IJEPA(BaseMomentumMethod):
         """
 
         out = super().training_step(batch, batch_idx)
-        class_loss = out["loss"]
-        Z = out["z"]
-        P = out["p"]
-        Z_momentum = out["momentum_z"]
 
-        # ------- negative consine similarity loss -------
-        neg_cos_sim = 0
-        for v1 in range(self.num_large_crops):
-            for v2 in np.delete(range(self.num_crops), v1):
-                neg_cos_sim += byol_loss_func(P[v2], Z_momentum[v1])
+        y_student, y_teacher = out["prediction_blocks"][0], out["target_blocks"][0]
+        loss = torch.nn.functional.mse_loss(y_student, y_teacher)
+        self.log('train_loss', loss)
 
-        # calculate std of features
-        with torch.no_grad():
-            z_std = F.normalize(torch.stack(Z[: self.num_large_crops]), dim=-1).std(dim=1).mean()
-
-        metrics = {
-            "train_neg_cos_sim": neg_cos_sim,
-            "train_z_std": z_std,
-        }
-        self.log_dict(metrics, on_epoch=True, sync_dist=True)
-
-        return neg_cos_sim + class_loss
+        return loss + out["loss"]

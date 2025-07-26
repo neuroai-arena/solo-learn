@@ -32,12 +32,11 @@ from torchvision.models.resnet import Bottleneck, BasicBlock, conv1x1
 from solo.losses.mocov3 import mocov3_loss_func
 from solo.methods import MoCoV3
 from solo.methods.base import BaseMomentumMethod
-from solo.utils.actions import get_crop_diffparams
 from solo.utils.misc import omegaconf_select
 from solo.utils.momentum import initialize_momentum_params
 
 
-class AAMoCoV3(MoCoV3):
+class AAMoCoV3Plus(MoCoV3):
     def __init__(self, cfg: omegaconf.DictConfig):
         super().__init__(cfg)
         ### AAMOCOV3
@@ -50,7 +49,6 @@ class AAMoCoV3(MoCoV3):
         cfg.method_kwargs.aa_temperature = omegaconf_select(cfg, "method_kwargs.aa_temperature", 0.2)
         cfg.method_kwargs.layer_names = omegaconf_select(cfg, "method_kwargs.layer_names", ["avgpool"])
         cfg.method_kwargs.equivariant = omegaconf_select(cfg, "method_kwargs.equivariant", False)
-        cfg.method_kwargs.use_crop_params = omegaconf_select(cfg, "method_kwargs.use_crop_params", 0)
 
         self.cfg.method_kwargs.dorsal = omegaconf_select(self.cfg, "method_kwargs.dorsal", {})
         self.cfg.method_kwargs.dorsal.in_planes = omegaconf_select(self.cfg, "method_kwargs.dorsal.in_planes", 2048)
@@ -68,12 +66,10 @@ class AAMoCoV3(MoCoV3):
         self.momentum_dorsal = self.create_dorsal_stream()
         aa_input_dim = 9
         try:
-            if self.cfg.data.dataset_kwargs.gaze_size != self.cfg.data.dataset_kwargs.min_gaze_size and self.cfg.data.dataset_kwargs.size_gaze_aware:
+            if self.cfg.data.dataset_kwargs.gaze_size != self.cfg.data.dataset_kwargs.min_gaze_size:
                 aa_input_dim += 1
         except:
             pass
-        if self.cfg.method_kwargs.use_crop_params == 2:
-            aa_input_dim += 4
 
         self.action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
                                                 aa_input_dim,
@@ -111,19 +107,15 @@ class AAMoCoV3(MoCoV3):
                                                 last_bn=True
                                                 )
 
-        aa_input_dim = self.features_dim * 2 if not cfg.method_kwargs.pre_aa_layers else cfg.method_kwargs.proj_output_dim * 2
-        if self.cfg.method_kwargs.use_crop_params == 1:
-            aa_input_dim += 4
-
         self.vis_action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
-                                                aa_input_dim,
+                                                self.features_dim * 2 if not cfg.method_kwargs.pre_aa_layers else cfg.method_kwargs.proj_output_dim * 2,
                                                 cfg.method_kwargs.aa_hidden_dim,
                                                 cfg.method_kwargs.proj_output_dim,
                                                 last_bn=True
                                                 )
 
         self.momentum_vis_action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
-                                                         aa_input_dim,
+                                                         self.features_dim * 2 if not cfg.method_kwargs.pre_aa_layers else cfg.method_kwargs.proj_output_dim * 2,
                                                          cfg.method_kwargs.aa_hidden_dim,
                                                          cfg.method_kwargs.proj_output_dim,
                                                          last_bn=True
@@ -138,8 +130,8 @@ class AAMoCoV3(MoCoV3):
 
         if cfg.method_kwargs.equivariant:
             self.predictor = self._build_mlp(
-                cfg.method_kwargs.layers_pred ,
-                cfg.method_kwargs.proj_output_dim + + cfg.method_kwargs.proj_output_dim,
+                cfg.method_kwargs.layers_pred + cfg.method_kwargs.proj_output_dim,
+                cfg.method_kwargs.proj_hidden_dim   ,
                 cfg.method_kwargs.pred_hidden_dim,
                 cfg.method_kwargs.proj_output_dim,
                 last_bn=False,
@@ -241,6 +233,22 @@ class AAMoCoV3(MoCoV3):
         ]
         return super().momentum_pairs + extra_momentum_pairs
 
+
+    @torch.no_grad()
+    def momentum_forward(self, X: torch.Tensor) -> Dict:
+        """Performs the forward pass of the momentum backbone and projector.
+
+        Args:
+            X (torch.Tensor): batch of images in tensor format.
+
+        Returns:
+            Dict[str, Any]: a dict containing the outputs of
+                the parent and the momentum projected features.
+        """
+
+        out = BaseMomentumMethod.momentum_forward(self, X)
+        return out
+
     def forward(self, X: torch.Tensor) -> Dict[str, Any]:
         """Performs forward pass of the online backbone, projector and predictor.
 
@@ -252,19 +260,7 @@ class AAMoCoV3(MoCoV3):
         """
 
         out = BaseMomentumMethod.forward(self, X)
-        z = self.projector(out["feats"])
-        # out.update({"q": q, "z": z})
-        out.update({"z": z})
         return out
-
-    def prepare_aa_input(self, av1, av2, batch ):
-        if not self.cfg.method_kwargs.use_crop_params == 1:
-            return torch.cat((av1, av2), dim=1)
-        _, X, targets = batch
-        params = [x[1] for x in X[:2]]
-        # print(get_action(params[0], params[1]))
-        crop_diff = get_crop_diffparams(params[0], params[1])#[:, :self.cfg.method_kwargs.num_crop_params]
-        return torch.cat((av1, av2, crop_diff),dim=1)
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
         """Training step for BYOL reusing BaseMethod training step.
@@ -283,13 +279,13 @@ class AAMoCoV3(MoCoV3):
 
         # AA stuff
         v1 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][0])
-        v2 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][1])
+        v2 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][2])
 
 
         av1 = self.vis_pre_action_projector(v1)
         av2 = self.vis_pre_action_projector(v2)
 
-        vis_action_proj = self.vis_action_projector(self.prepare_aa_input(av1, av2, batch))
+        vis_action_proj = self.vis_action_projector(torch.cat((av1, av2), dim=1))
         vis_action_pred = self.vis_action_predictor(vis_action_proj)
 
         mom_v1 = self.momentum_dorsal(out[self.cfg.method_kwargs.layer_names[-1]][0])
@@ -298,17 +294,13 @@ class AAMoCoV3(MoCoV3):
 
         step , X, targets = batch
         action = X[-1]
-        if self.cfg.method_kwargs.use_crop_params == 2:
-            action = torch.cat((action, get_crop_diffparams(X[0][1], X[1][1])), dim=1)
-
-
         action_proj = self.action_projector(action)
         action_pred = self.action_predictor(action_proj)
 
         with torch.no_grad():
             amom_v1 = self.momentum_vis_pre_action_projector(mom_v1)
             amom_v2 = self.momentum_vis_pre_action_projector(mom_v2)
-            mom_vis_action_proj = self.momentum_vis_action_projector(self.prepare_aa_input(amom_v1, amom_v2, batch))
+            mom_vis_action_proj = self.momentum_vis_action_projector(torch.cat((amom_v1, amom_v2), dim=1))
             mom_action_proj = self.momentum_action_projector(action)
 
         aa_contrastive_loss =  mocov3_loss_func(
@@ -316,17 +308,12 @@ class AAMoCoV3(MoCoV3):
         ) + mocov3_loss_func(action_pred, mom_vis_action_proj, temperature=self.cfg.method_kwargs.aa_temperature)
 
         # MoCoV3 stuff
-        if not self.cfg.method_kwargs.equivariant:
-            Q = ( self.predictor(out["z"][0]), self.predictor(out["z"][1]))
-            K = out["momentum_k"]
+        Q = self.predictor(self.projector(out["feats"][0])), self.predictor(self.projector(out["feats"][1]))
+        K = self.momentum_projector(out["momentum_feats"][0]), self.momentum_projector(out["momentum_feats"][1])
 
-            contrastive_loss = mocov3_loss_func(
-                Q[0], K[1], temperature=self.temperature
-            ) + mocov3_loss_func(Q[1], K[0], temperature=self.temperature)
-        else:
-            Q = self.predictor(torch.cat((out["z"][0], action_proj), dim=1))
-            contrastive_loss = mocov3_loss_func(Q, out["momentum_k"][1], temperature=self.temperature)
-
+        contrastive_loss = mocov3_loss_func(
+            Q[0], K[1], temperature=self.temperature
+        ) + mocov3_loss_func(Q[1], K[0], temperature=self.temperature)
 
 
         metrics = {
@@ -336,19 +323,18 @@ class AAMoCoV3(MoCoV3):
         for i in range(action.shape[1]):
             metrics[f"a{i}"] = action[0,i]
 
-
-        # if batch_idx == 0:
-        #     img = X[0]
-        #     img2 = X[1]
-        #     mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
-        #     unnormalize = transforms.Normalize((-mean / std).tolist(), (1.0 / std).tolist())
-        #     os.makedirs(f"/home/aubret/test_images/diff_sameaug{self.cfg.data.dataset_kwargs.gaze_size}", exist_ok=True)
-        #     for i in range(32):
-        #         imgi = unnormalize(img[i:i+1].cpu())
-        #         imgi2 = unnormalize(img2[i:i+1].cpu())
-        #         torchvision.utils.save_image(imgi, f"/home/aubret/test_images/diff_sameaug{self.cfg.data.dataset_kwargs.gaze_size}/{step[i].item()}_1.png")
-        #         torchvision.utils.save_image(imgi2, f"/home/aubret/test_images/diff_sameaug{self.cfg.data.dataset_kwargs.gaze_size}/{step[i].item()}_2.png")
-        #     print("finish saving")
+        # img = X[0]
+        # img2 = X[1]
+        # mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
+        # unnormalize = transforms.Normalize((-mean / std).tolist(), (1.0 / std).tolist())
+        # os.makedirs(f"/home/aubret/test_images/diff_noaug{self.cfg.data.dataset_kwargs.gaze_size}", exist_ok=True)
+        # for i in range(32):
+        #     imgi = unnormalize(img[i:i+1].cpu())
+        #     imgi2 = unnormalize(img2[i:i+1].cpu())
+        #     torchvision.utils.save_image(imgi, f"/home/aubret/test_images/diff_noaug{self.cfg.data.dataset_kwargs.gaze_size}/{step[i].item()}_1.png")
+        #     torchvision.utils.save_image(imgi2, f"/home/aubret/test_images/diff_noaug{self.cfg.data.dataset_kwargs.gaze_size}/{step[i].item()}_2.png")
+        # print("finish saving")
+        # time.sleep(100)
 
         self.log_dict(metrics, on_epoch=True, on_step=True, sync_dist=True)
 

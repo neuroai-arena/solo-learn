@@ -13,7 +13,7 @@ hydra:
 name: "pascalvoc_mocov3"
 
 backbone:
-  name: "vit_base"
+  name: "resnet50"
 method: "mocov3"
 data:
   dataset: PascalVOC
@@ -32,7 +32,7 @@ scheduler:
   lr_decay_steps: [60, 80]
 checkpoint:
   enabled: True
-  dir: "trained_models"
+  dir: "/scratch_shared/aubret/trained_models2"
   frequency: 1
   keep_prev: False
   save_last: True
@@ -42,8 +42,9 @@ early_stopping:
   enabled: False
 
 grid:
-  enabled: False
-  lr: [0.1,0.2,0.4,0.8]
+  enabled: True
+  lr: [0.001, 0.01,0.1,0.2,0.4,0.8]
+  layer_names: [ "backbone.layer4","backbone.layer3" ]
   use_avgpool: [ False ]
   use_cls_token: [ False ]
   use_n_blocks: [ 1 ]

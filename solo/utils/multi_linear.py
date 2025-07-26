@@ -79,26 +79,28 @@ class DepthLinearClassifier(nn.Module):
     def __init__(
             self,
             out_dim: int,
-            num_classes: int,
+            num_classes,
     ):
         super().__init__()
         self.out_dim = out_dim
         self.num_classes = num_classes
         img_size = 224
 
-        class Interpolate(nn.Module):
-            def forward(self, x):
-                return torch.nn.functional.interpolate(x, size=(img_size, img_size), mode='bilinear',
-                                                       align_corners=False)
+        # class Interpolate(nn.Module):
+        #     def forward(self, x):
+        #         return torch.nn.functional.interpolate(x, size=(img_size, img_size), mode='bilinear',
+        #                                                align_corners=False)
         self.head = nn.Sequential(
-            nn.Conv2d(out_dim, 1, 1),
-            # nn.Conv2d(out_dim, 128, 3, padding=1),
-            # nn.ReLU(inplace=True),
+            # nn.Conv2d(out_dim, 1, 1),
+            nn.Conv2d(out_dim, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
             # nn.Conv2d(128, 64, 3, padding=1),
-            # nn.Conv2d(128, 1, 1),
+            nn.Conv2d(128, num_classes[0], 1),
+            nn.Softplus() if num_classes[0] == 1 else nn.Identity()
             # nn.ReLU(inplace=True),
             # nn.Conv2d(64, 1, kernel_size=1),  # Single-channel depth output
-            Interpolate()
+            # Interpolate()
         )
 
     def forward(self, x):
@@ -140,12 +142,12 @@ class CNNLinearClassifier(nn.Module):
     def __init__(
             self,
             out_dim: int,
-            num_classes: int,
+            num_classes,
             **output_kwargs,
     ):
         super().__init__()
         self.output_kwargs = output_kwargs
-        if isinstance(num_classes, tuple) or isinstance(num_classes, omegaconf.listconfig.ListConfig):
+        if  isinstance(num_classes, omegaconf.listconfig.ListConfig):
             self.head = DepthLinearClassifier(out_dim, num_classes)
             self.pool = "none"
         else:
@@ -310,7 +312,6 @@ def setup_linear_classifiers_transformer(
             continue
 
         out_dim = out_dim.shape[1]
-
         linear_classifier = ViTLinearClassifier(out_dim, num_classes=num_classes, has_class_token=has_class_token,
                                                 **param)
 

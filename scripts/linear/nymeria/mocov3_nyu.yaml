@@ -16,10 +16,10 @@ backbone:
   name: "resnet50"
 method: "mocov3"
 data:
-  dataset: imagenet100_im
-  train_path: "/home/aubret/"
-  val_path: "/home/aubret"
-  num_workers: 8
+  dataset: NYUv2
+  train_path: "/scratch_shared/aubret/nyudepthv2/train/"
+  val_path: "/scratch_shared/aubret/nyudepthv2/val/"
+  num_workers: 4
 optimizer:
   name: "sgd"
   batch_size: 64
@@ -41,11 +41,11 @@ early_stopping:
 
 grid:
   enabled: True
-  lr: [0.05,0.1,0.2,0.4,0.8,1.6]
-  layer_names: ["backbone.avgpool","head.2","head.5"]
-  use_avgpool: [ True ]
-  use_cls_token: [ True ]
-  use_n_blocks: [ 1 ]
+  lr: [0.0001,0.0003, 0.001, 0.003, 0.01, 0.03, 0.1]
+  layer_names: ["backbone.layer4","backbone.layer3","backbone.layer2"]
+  use_avgpool: None
+  use_cls_token: None
+  use_n_blocks: [1]
 use_projector: True
 pre_extract_feats: False
 finetune: False
@@ -56,5 +56,5 @@ devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
 log_every_n_steps: 50

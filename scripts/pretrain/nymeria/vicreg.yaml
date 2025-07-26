@@ -11,23 +11,16 @@ hydra:
   run:
     dir: .
 
-name: "aamocov3-nymeria"
-method: "aamocov3"
+name: "vicreg-nymeria"
+method: "vicreg"
 backbone:
   name: "resnet50"
 method_kwargs:
-  proj_hidden_dim: 4096
-  proj_output_dim: 256
-  pred_hidden_dim: 4096
-  temperature: 0.2
-  aa_layers: 3
-  aa_layers_pred: 3
-  aa_hidden_dim: 4096
-  aa_weight: 1
-  aa_temperature: 0.2
-momentum:
-  base_tau: 0.996
-  final_tau: 0.996
+  proj_hidden_dim: 2048
+  proj_output_dim: 2048
+  sim_loss_weight: 25.0
+  var_loss_weight: 25.0
+  cov_loss_weight: 1.0
 data:
   dataset: nymeria
   train_path: "/home/aubret/nymeria_dataset/"
@@ -37,7 +30,7 @@ data:
   dataset_kwargs:
     gaze_size: 224
     time_window: 5
-    center_crop: False #To compare gaze crop with a center crop with gaze size 540
+    center_crop: False #To compar e gaze crop with a center crop with gaze size 540
     resolution: 512
     version: 3
     fps: 5
@@ -75,6 +68,7 @@ knn_clb:
   format: h5
   delay_epochs: 1
   freq_epochs: 1
+
 
 shapebias_clb:
   enabled: True

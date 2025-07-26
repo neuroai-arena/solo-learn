@@ -10,20 +10,20 @@ hydra:
   run:
     dir: .
 
-name: "imagenet_mocov3"
+name: "place_mocov3"
 
 backbone:
   name: "resnet50"
 method: "mocov3"
 data:
-  dataset: imagenet100_im
+  dataset: Places365_h5
   train_path: "/home/aubret/"
-  val_path: "/home/aubret"
-  num_workers: 8
+  val_path: "/home/aubret/"
+  num_workers: 4
 optimizer:
   name: "sgd"
   batch_size: 64
-  lr: 0.3
+  lr: 0.1
   weight_decay: 0
 scheduler:
   name: "step"
@@ -44,7 +44,7 @@ grid:
   lr: [0.05,0.1,0.2,0.4,0.8,1.6]
   layer_names: ["backbone.avgpool","head.2","head.5"]
   use_avgpool: [ True ]
-  use_cls_token: [ True ]
+  use_cls_token: [ False ]
   use_n_blocks: [ 1 ]
 use_projector: True
 pre_extract_feats: False
@@ -56,5 +56,5 @@ devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
 log_every_n_steps: 50

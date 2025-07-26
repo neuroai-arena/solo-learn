@@ -15,13 +15,13 @@ import torchvision
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from torchvision.models.feature_extraction import create_feature_extractor
+from torchvision.models.feature_extraction import create_feature_extractor, get_graph_node_names
 
 from timm.models.vision_transformer import VisionTransformer
 
 from solo.utils.lars import LARS
 from solo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
-from solo.utils.metrics import accuracy_at_k, weighted_mean
+from solo.utils.metrics import accuracy_at_k, weighted_mean, depth_metrics
 from solo.utils.misc import (
     omegaconf_select,
     param_groups_layer_decay,
@@ -29,6 +29,7 @@ from solo.utils.misc import (
 )
 from solo.utils.multi_linear import setup_linear_classifiers
 from solo.backbones.vit import is_transformer
+from torchmetrics.segmentation import MeanIoU
 
 
 class FeatureDataset(Dataset):
@@ -222,6 +223,7 @@ class LinearModel(pl.LightningModule):
         # keep track of validation metrics
         self.validation_step_outputs = []
         self.max_val_acc_top1 = defaultdict(lambda: torch.tensor(0.0))
+        self.min_val_acc_top1 = defaultdict(lambda: torch.tensor(10000.0))
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -406,7 +408,6 @@ class LinearModel(pl.LightningModule):
                 norm=True,
             )
             if any([x is not None for x in [self.cfg.grid.use_avgpool, self.cfg.grid.use_cls_token]]):
-                print([x is not None for x in [self.cfg.grid.use_avgpool, self.cfg.grid.use_cls_token]])
                 out = torch.stack(
                     [torch.cat(
                         [
@@ -435,7 +436,7 @@ class LinearModel(pl.LightningModule):
             X = X.to(memory_format=torch.channels_last)
 
         if not self.use_pre_extract_feats or (
-                self.trainer.sanity_checking and not self.cfg.skip_pre_extractinmon_of_feats):
+                self.trainer.sanity_checking and not self.cfg.skip_pre_extraction_of_feats):
             with torch.set_grad_enabled(self.finetune):
                 feats = self.forward_backbone(X)
         else:
@@ -485,12 +486,27 @@ class LinearModel(pl.LightningModule):
                 for classifier, logits in out.items():
                     loss = self.loss_func(logits, target)
                     total_loss += loss
+                    metrics.update({f"{mode}/{classifier}_loss": loss})
 
                     if len(target.shape) <= 2:
                         acc1, acc5 = accuracy_at_k(logits, target, top_k=(1, 5))
                         metrics.update({f"{mode}/{classifier}_acc1": acc1,
                                         f"{mode}/{classifier}_acc5": acc5})
-                    metrics.update({f"{mode}/{classifier}_loss": loss})
+                    elif self.cfg.data.num_classes[0] == 1: #depth estimation
+                        rmse, rmsle, absrel, sqrl, silog = depth_metrics(logits, target)
+                        metrics.update({f"{mode}/{classifier}_rmse": rmse,
+                                        f"{mode}/{classifier}_rmsle": rmsle,
+                                        f"{mode}/{classifier}_absrel": absrel,
+                                        f"{mode}/{classifier}_sqrl": sqrl,
+                                        f"{mode}/{classifier}_silog": silog})
+                    else: #Semantic segmentation
+                        if not hasattr(self, "miou"):
+                            self.train_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)
+                            self.val_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)                        # self.val_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False)
+                        logits = torch.nn.functional.interpolate(logits, size=target.shape[2:], mode="bilinear",align_corners=False)
+                        metrics.update({f"{mode}/{classifier}_mIoU": getattr(self, f"{mode}_miou")(logits.argmax(dim=1), target.long().squeeze())})
+
+
                 metrics.update({f"{mode}/loss": total_loss})
             else:
                 loss = self.loss_func(out, target)
@@ -498,7 +514,19 @@ class LinearModel(pl.LightningModule):
                 if len(target.shape) <= 2:
                     acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
                     metrics.update({f"{mode}/acc1": acc1, f"{mode}/acc5": acc5})
-
+                elif self.cfg.data.num_classes[0] == 1:
+                    rmse, rmsle, absrel, sqrl, silog = depth_metrics(out, target)
+                    metrics.update({f"{mode}/rmse": rmse,
+                                    f"{mode}/rmsle": rmsle,
+                                    f"{mode}/absrel": absrel,
+                                    f"{mode}/sqrl": sqrl,
+                                    f"{mode}/silog": silog})
+                else:
+                    if not hasattr(self, "miou"):
+                        self.train_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)
+                        self.val_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)
+                    logits = torch.nn.functional.interpolate(logits, size=target.shape[2:], mode="bilinear", align_corners=False)
+                    metrics.update({f"{mode}/mIoU": getattr(self, f"{mode}_miou")(logits.argmax(dim=1), target.long().squeeze())})
         return metrics
 
     def training_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
@@ -537,6 +565,7 @@ class LinearModel(pl.LightningModule):
         self.validation_step_outputs.append(metrics)
         return metrics
 
+
     def on_validation_epoch_end(self):
         """Averages the losses and accuracies of all the validation batches.
         This is needed because the last batch can be smaller than the others,
@@ -550,15 +579,27 @@ class LinearModel(pl.LightningModule):
 
         self.validation_step_outputs.clear()
 
-        for acc1_key in sorted(filter(lambda x: "acc1" in x, all_metrics)):
-            # gather all accuracies and average them
-            val_acc1_all = self.all_gather(log[acc1_key])
-            val_acc1_all = torch.mean(val_acc1_all)
-            # print(self.max_val_acc_top1[acc1_key], val_acc1_all,torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all))
-            self.max_val_acc_top1[acc1_key] = torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all)
-            log[f"max/{acc1_key}"] = self.max_val_acc_top1[acc1_key]
 
-        self.log_dict(log, sync_dist=True)
+        for k in ["acc1", "rmsle", "silog", "sqrl", "absrel", "rmse", "mIoU","acc5"]:
+            all_max = 0
+            all_min = 10000
+            for acc1_key in sorted(filter(lambda x: k in x, all_metrics)):
+                # gather all accuracies and average them
+                val_acc1_all = self.all_gather(log[acc1_key])
+                val_acc1_all = torch.mean(val_acc1_all)
+                # print(self.max_val_acc_top1[acc1_key], val_acc1_all,torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all))
+                # if not torch.isnan(val_acc1_all):
+                self.max_val_acc_top1[acc1_key] = torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all)
+                self.min_val_acc_top1[acc1_key] = torch.min(self.min_val_acc_top1[acc1_key], val_acc1_all)
+                all_max = torch.max(self.max_val_acc_top1[acc1_key], all_max) if all_max != 0 else self.max_val_acc_top1[acc1_key]
+                all_min = torch.min(self.min_val_acc_top1[acc1_key], all_min) if all_min != 10000 else self.min_val_acc_top1[acc1_key]
+
+                log[f"max/{acc1_key}"] = self.max_val_acc_top1[acc1_key]
+                log[f"min/{acc1_key}"] = self.min_val_acc_top1[acc1_key]
+            if all_max != 0 or all_min != 10000:
+                log[f"max_all/{k}"] = all_max
+                log[f"min_all/{k}"] = all_min
+            self.log_dict(log, sync_dist=True)
 
     # def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
     #     """Called when saving a checkpoint.

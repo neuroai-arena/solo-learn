@@ -51,6 +51,7 @@ from solo.backbones import (
     wide_resnet28w2,
     wide_resnet28w8,
 )
+from solo.backbones.resnet import resnet50pe, resnet50p
 from solo.utils.knn import WeightedKNNClassifier
 from solo.utils.lars import LARS
 from solo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -74,6 +75,8 @@ class BaseMethod(pl.LightningModule):
     _BACKBONES = {
         "resnet18": resnet18,
         "resnet50": resnet50,
+        "resnet50pe": resnet50pe,
+        "resnet50p": resnet50p,
         "vit_tiny": vit_tiny,
         "vit_small": vit_small,
         "vit_base": vit_base,
@@ -207,7 +210,7 @@ class BaseMethod(pl.LightningModule):
 
         # online linear classifier
         self.num_classes: int = cfg.data.num_classes
-        if not self.cfg.no_validation:
+        if not hasattr(cfg, "no_validation") or not self.cfg.no_validation:
             self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
 
         # training related
@@ -522,6 +525,8 @@ class BaseMethod(pl.LightningModule):
         _, X, targets = batch
 
         X = [X] if isinstance(X, torch.Tensor) else X
+        X = [x[0] if isinstance(x, list) else x for x in X] #There is an action
+
         # check that we received the desired number of crops
         # assert len(X) == self.num_crops
 
@@ -803,6 +808,7 @@ class BaseMomentumMethod(BaseMethod):
 
         _, X, targets = batch
         X = [X] if isinstance(X, torch.Tensor) else X
+        X = [x[0] if isinstance(x, list) else x for x in X]
 
         # remove small crops
         X = X[: self.num_large_crops]
