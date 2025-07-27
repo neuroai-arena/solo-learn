@@ -12,7 +12,7 @@ hydra:
     dir: .
 
 seed: 0
-name: "mocov3nf_lr16_gs540_t0"
+name: "mocov3nf_lr16_gs112_t0"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -31,7 +31,7 @@ data:
   format: "h5"
   num_workers: 8
   dataset_kwargs:
-    gaze_size: 540
+    gaze_size: 112
     time_window: 0
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
     resize_gs: False  # resize gaze to 224 before applying transform

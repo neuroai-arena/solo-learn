@@ -9,12 +9,18 @@ hydra:
   run:
     dir: .
 
-name: dinov2_imagenet_100_t=0_gs=224
+name: dinov2_imagenet_t=15_gs=540
+pretrained_feature_extractor: null
 #pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_16_gs224_t0_lr=001_dpr=01/model_final.pth"
 #pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_gs224_t15_lr=001_dpr=01/model_final.pth"
 #pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=01/model_0031434.pth" # model_0031434.pth
 #pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=01_new/model_final.pth"
-pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=02_/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t0_lr=002_dpr=02_/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t15_lr=002_dpr=02/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs540_t0_lr=002_dpr=01_new/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t05_lr=002_dpr=02/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs224_t15_lr=002_dpr=02_cc/model_final.pth"
+#pretrained_feature_extractor: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/dinov2/dinov2_vit_14_gs540_t15_lr=002_dpr=02/model_final.pth"
 network_type: teacher
 
 method: "dinov2"
@@ -36,7 +42,7 @@ backbone:
     interpolate_offset: 0.1
 
 data:
-  dataset: imagenet100_42
+  dataset: imagenet_42 #Places365_h5 #
   train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets"
   val_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
   train_backgrounds: [ 's1', 's2', 's3', 's4', 's5', 's6' ]

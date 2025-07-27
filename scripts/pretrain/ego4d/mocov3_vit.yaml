@@ -12,7 +12,7 @@ hydra:
     dir: .
 
 
-name: "mocov3_vit_gs540_t0"
+name: "mocov3_vit_gs224_t20"
 method: "mocov3"
 backbone:
   name: "vit_base"
@@ -35,8 +35,8 @@ data:
   format: "h5"
   num_workers: 8
   dataset_kwargs:
-    gaze_size: 540
-    time_window: 0
+    gaze_size: 224
+    time_window: 20
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
     resize_gs: False  # resize gaze to 224 before applying transform
 optimizer:

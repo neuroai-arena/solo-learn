@@ -343,6 +343,7 @@ def prepare_transforms(dataset: str, **aug_kwargs) -> Tuple[nn.Module, nn.Module
         # transforms.RandomResizedCrop(size=224, interpolation=transforms.InterpolationMode.BICUBIC),
         #We create a squared image, resize it to 540 (like ego4d) to apply cortical magnification.
         T_train.transforms.pop(-2)
+
         T_val.transforms.pop(-2)
 
         T_train.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_train.transforms

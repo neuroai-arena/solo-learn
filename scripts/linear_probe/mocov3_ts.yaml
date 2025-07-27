@@ -41,6 +41,7 @@ checkpoint:
   save_last: True
 auto_resume:
   enabled: False
+  max_hours: 300
 early_stopping:
   enabled: True
   patience: 5

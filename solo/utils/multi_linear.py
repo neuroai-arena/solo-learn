@@ -8,12 +8,11 @@ def parameter_iterator(params: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
     """
     Generate all combinations of parameters from a dictionary of lists.
     """
+    keys, values = [], []
     for k, v in params.items():
-        if v is None:
-            params.pop(k)
-
-    keys = params.keys()
-    values = params.values()
+        if v is not None:
+            keys.append(k)
+            values.append(v)
 
     return [dict(zip(keys, combination)) for combination in product(*values)]
 
