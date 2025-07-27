@@ -11,8 +11,8 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d"
-method: "mocov3"
+name: "byol-ego4d"
+method: "byol"
 backbone:
   name: "resnet50"
 method_kwargs:

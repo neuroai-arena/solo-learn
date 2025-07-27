@@ -67,7 +67,7 @@ class BYOL(BaseMomentumMethod):
 
         self.projector = MultiLayerProj(cfg.method_kwargs.n_layer, self.features_dim, proj_hidden_dim,proj_output_dim, bias=False)
         self.momentum_projector = MultiLayerProj(cfg.method_kwargs.n_layer, self.features_dim, proj_hidden_dim,proj_output_dim, bias=False)
-        initialize_momentum_params(self.projector, self.momentum_projector, cfg=cfg)
+        initialize_momentum_params(self.projector, self.momentum_projector)
 
         self.predictor = MultiLayerProj(cfg.method_kwargs.n_layer_pred, proj_output_dim, pred_hidden_dim,proj_output_dim, bias=False)
 
