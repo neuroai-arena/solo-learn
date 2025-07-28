@@ -442,10 +442,7 @@ class LinearModel(pl.LightningModule):
         else:
             feats = X
 
-        # if self.cfg.use_projector and self.cfg.grid.layer_names:
-        #     feats = self.backbone.head(feats)
-        logits = self.classifier(feats)
-
+        logits = self.classifier(feats.detach())
         return {"logits": logits, "feats": feats}
 
     def shared_step(
@@ -503,7 +500,7 @@ class LinearModel(pl.LightningModule):
                         if not hasattr(self, "miou"):
                             self.train_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)
                             self.val_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)                        # self.val_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False)
-                        logits = torch.nn.functional.interpolate(logits, size=target.shape[2:], mode="bilinear",align_corners=False)
+                        logits = torch.nn.functional.interpolate(out, size=target.shape[2:], mode="bilinear",align_corners=False)
                         metrics.update({f"{mode}/{classifier}_mIoU": getattr(self, f"{mode}_miou")(logits.argmax(dim=1), target.long().squeeze())})
 
 
@@ -525,7 +522,7 @@ class LinearModel(pl.LightningModule):
                     if not hasattr(self, "miou"):
                         self.train_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)
                         self.val_miou = MeanIoU(num_classes=self.cfg.data.num_classes[1], include_background=False).to(target.device)
-                    logits = torch.nn.functional.interpolate(logits, size=target.shape[2:], mode="bilinear", align_corners=False)
+                    logits = torch.nn.functional.interpolate(out, size=target.shape[2:], mode="bilinear", align_corners=False)
                     metrics.update({f"{mode}/mIoU": getattr(self, f"{mode}_miou")(logits.argmax(dim=1), target.long().squeeze())})
         return metrics
 

@@ -3,7 +3,7 @@ import subprocess
 import argparse
 
 ckpts = [
-    # "iiiqnrs0/mocov3nf_lr16-iiiqnrs0-ep=last.ckpt",
+    "iiiqnrs0/mocov3nf_lr16-iiiqnrs0-ep=last.ckpt",
     # "q9y4x1nm/mocov3nf_lr16_c£enter-q9y4x1nm-ep=last.ckpt",
     # "mocov3nf_lr16_gs540resize-mv0pnuza-ep=last.ckpt",
     # "mocov3nf_lr16t0-yboaa3by-ep=last.ckpt",
@@ -16,16 +16,16 @@ ckpts = [
     # "mocov3nf_lr16_gs112-rsl7me4h-ep=last.ckpt",
     # "mocov3nf_lr16t25-qo9qs3j3-ep=last.ckpt",
     # "tlyydhj5/mocov3nf_lr16_gs336_t5-tlyydhj5-ep=last.ckpt"
-    # 'm4lf6jxv/mocov3nf_lr16_gs540_resize_t5-m4lf6jxv-ep=last.ckpt'.
+    # 'm4lf6jxv/mocov3nf_lr16_gs540_resize_t5-m4lf6jxv-ep=last.ckpt',
     # "ewnydxom/mocov3nf_lr16_gs540_t0-ewnydxom-ep=last.ckpt",
     # "3aah1qh5/mocov3nf_lr16_gs313x2-3aah1qh5-ep=last.ckpt",
     # 'tl8ynbj4/mocov3nf_lr16_gs540_t15x2-tl8ynbj4-ep=last-stp=last.ckpt',
     # 'ixgzlby3/mocov3nf_lr16_gs224_t15x2-ixgzlby3-ep=last-stp=last.ckpt',
-    'blmypuhb/mocov3nf_lr16_gsRND_t15-blmypuhb-ep=last-stp=last.ckpt'
+    # 'blmypuhb/mocov3nf_lr16_gsRND_t15-blmypuhb-ep=last-stp=last.ckpt'
 ]
 
 datasets = [
-    'imagenet_42',
+    # 'imagenet_42',
     'imagenet100_42',
     'imagenet100_im',
     'DTD',
@@ -41,10 +41,7 @@ datasets = [
     'imagenet10pct_42',
     'imagenet1pct_42',
     'Places365_h5',
-    'STL10_224',
-    # 'STL10_FG_224',
-    # 'STL10',
-    # 'STL10_FG',
+    'STL10_224'
 ]
 
 if __name__ == '__main__':

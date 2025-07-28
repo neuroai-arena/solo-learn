@@ -91,7 +91,7 @@ def main(cfg: DictConfig):
     backbone = backbone_model(method=cfg.pretrain_method, **cfg.backbone.kwargs)
     if cfg.backbone.name.startswith("resnet"):
         # remove fc layer
-        backbone.fc = nn.Identity()
+        backbone.fc = nn .Identity()
         cifar = cfg.data.dataset in ["cifar10", "cifar100"]
         if cifar:
             backbone.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=2, bias=False)
@@ -198,7 +198,6 @@ def main(cfg: DictConfig):
         auto_augment=cfg.auto_augment,
         train_backgrounds=cfg.data.train_backgrounds,
         val_backgrounds=cfg.data.val_backgrounds,
-        aug_kwargs = cfg.aug_kwargs,
         transform_kwargs=cfg.data.transform_kwargs
     )
 

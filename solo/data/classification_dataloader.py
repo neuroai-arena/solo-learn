@@ -92,7 +92,8 @@ def build_custom_pipeline():
     return pipeline
 
 
-def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Module, nn.Module]:
+
+def prepare_transforms(dataset: str, **aug_kwargs) -> Tuple[nn.Module, nn.Module]:
     """Prepares pre-defined train and test transformation pipelines for some datasets.
 
     Args:
@@ -369,6 +370,7 @@ def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Mo
         "STL10_FG": stl_pipeline,
         "Places365_h5": imagenet_pipeline,
         "SUN397": imagenet_pipeline,
+        "SUN397_h5": imagenet_pipeline,
         "imagenet1pct_42": imagenet_pipeline,
         "imagenet10pct_42": imagenet_pipeline,
         "toybox": toybox_pipeline,
@@ -385,25 +387,33 @@ def prepare_transforms(dataset: str, aug_kwargs = None, **kwargs) -> Tuple[nn.Mo
     T_train = pipeline["T_train"]
     T_val = pipeline["T_val"]
 
-    if aug_kwargs and aug_kwargs.cm.enabled:
-        fov, K = aug_kwargs.cm.fov, aug_kwargs.cm.K
+    if aug_kwargs.get("global_gaussian_blur", None) is not None:
+        sigma = aug_kwargs["global_gaussian_blur"]["sigma"]
+        T_train.transforms.insert(0, GaussianBlur(sigma=sigma))
+        T_val.transforms.insert(0, GaussianBlur(sigma=sigma))
+
+
+    if aug_kwargs and aug_kwargs.get("cm").get("enabled"):
+        fov, K = aug_kwargs.get("cm").get("fov"), aug_kwargs.get("cm").get("K")
 
 
         # transforms.RandomResizedCrop(size=224, interpolation=transforms.InterpolationMode.BICUBIC),
         #We create a squared image, resize it to 540 (like ego4d) to apply cortical magnification.
         T_train.transforms.pop(-2)
+
         T_val.transforms.pop(-2)
 
         T_train.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_train.transforms
         T_val.transforms = [CenterCropBig(), transforms.Resize(540, interpolation=transforms.InterpolationMode.BICUBIC), transforms.ToTensor(), CorticalMagnification(fov=fov, K=K)] + T_val.transforms
 
-    if kwargs.get("global_gaussian_blur", None) is not None:
-        sigma = kwargs["global_gaussian_blur"]["sigma"]
+    if aug_kwargs.get("global_gaussian_blur", None) is not None:
+        sigma = aug_kwargs["global_gaussian_blur"]["sigma"]
         T_train.transforms.insert(0, GaussianBlur(sigma=sigma))
         T_val.transforms.insert(0, GaussianBlur(sigma=sigma))
 
     print("T_train", T_train)
     print("T_val", T_val)
+
     return T_train, T_val
 
 
@@ -444,15 +454,6 @@ def prepare_datasets(
     if val_data_path is None:
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
-
-    # assert dataset in pipelines.keys()
-    # [
-    #     "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet2", "imagenet2_100", "ego4d",
-    #     "tiny", "cifar10_224", "cifar100_224", "imagenet_42", "imagenet100_42", "imagenet100_im", "imagenet_im", 'core50', "DTD", 'Flowers102',
-    #     'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10","STL10_224", "Places365_h5", "SUN397",
-    #     "Caltech101", "imagenet1pct_42", "imagenet10pct_42", "toybox", 'core50_bg', "feat", "COIL100", "STL10_FG_224",
-    #     "STL10_FG", "nymeria","SUN_rgbd","NYUv2","PascalVOC"
-    # ]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
         if dataset == "cifar10_224": dataset = "cifar10"
@@ -518,6 +519,10 @@ def prepare_datasets(
         train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'Places365', transform=T_train,
                                                 split="train")
         val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'Places365', transform=T_val, split="val")
+    elif dataset in ["SUN397_h5"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'SUN397', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'SUN397', transform=T_val, split="test")
     elif dataset in ["COIL100"]:
         train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'coil100', transform=T_train,
                                                 split="train")
@@ -660,7 +665,6 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
-        aug_kwargs = {},
         transform_kwargs: Optional[dict] = None,
         **dataset_kwargs
 ) -> Tuple[DataLoader, DataLoader]:
@@ -686,7 +690,7 @@ def prepare_data(
     """
 
 
-    T_train, T_val = prepare_transforms(dataset, aug_kwargs, **(transform_kwargs or {}))
+    T_train, T_val = prepare_transforms(dataset, **(transform_kwargs or {}))
     if auto_augment:
         T_train = create_transform(
             input_size=224,

@@ -121,18 +121,21 @@ def run_knn(
 
 def main():
     args = parse_args_knn()
+    print(args)
 
     # build paths
     ckpt_dir = Path(args.pretrained_checkpoint_dir)
-    args_path = ckpt_dir / "args.json"
-    ckpt_path = sorted([ckpt_dir / ckpt for ckpt in os.listdir(ckpt_dir) if ckpt.endswith(".ckpt")])
-
+    # args_path = ckpt_dir / "args.json"
+    args_path = ckpt_dir.parent / "args.json"
+    ckpt_path = ckpt_dir
+    # ckpt_path = sorted([ckpt_dir / ckpt for ckpt in os.listdir(ckpt_dir) if ckpt.endswith(".ckpt")])
+    #
     # try to get last checkpoint
-    last = list(filter(lambda x: "ep=last" in str(x), ckpt_path))
-    if last:
-        ckpt_path = last[0]
-    else:
-        ckpt_path = ckpt_path[-1]
+    # last = list(filter(lambda x: "ep=last" in str(x), ckpt_path))
+    # if last:
+    #     ckpt_path = last[0]
+    # else:
+    #     ckpt_path = ckpt_path[-1]
 
     print("Using checkpoint", ckpt_path)
 
@@ -144,8 +147,16 @@ def main():
     # build the model
     model = METHODS[method_args["method"]].load_from_checkpoint(ckpt_path, strict=False, cfg=cfg)
 
+    store_root = Path('res/knn/')
+    filename = f"knn_{ckpt_dir.stem}.csv"
+
+    if args.global_blur_sigma > 0:
+        transform_kwargs = {'global_gaussian_blur': {'sigma': args.global_blur_sigma}}
+        filename = f"knn_{ckpt_dir.stem}_blur{str(args.global_blur_sigma).replace('.', ':')}.csv"
+    else:
+        transform_kwargs = None
     # prepare data
-    _, T = prepare_transforms(args.dataset)
+    _, T = prepare_transforms(args.dataset, **(transform_kwargs or {}))
     train_dataset, val_dataset = prepare_datasets(
         args.dataset,
         T_train=T,
@@ -187,10 +198,11 @@ def main():
                         distance_fx=distance_fx,
                     )
                     result.append({"feat_type": feat_type, "distance_fx": distance_fx, "k": k, "T": T, "acc1": acc1,
-                                   "acc5": acc5})
+                                   "acc5": acc5, 'blur': args.global_blur_sigma})
     result = pd.DataFrame(result)
     print(result)
-    result.to_csv(f"res/knn/knn_{ckpt_dir.stem}.csv", index=False)
+    print("Saving results to", store_root / filename)
+    result.to_csv(store_root / filename, index=False)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ def parse_args_knn() -> argparse.Namespace:
     parser.add_argument("--distance_function", type=str, nargs="+")
     parser.add_argument("--feature_type", type=str, nargs="+")
     parser.add_argument("--momentum_model", action="store_true")
+    parser.add_argument("--global_blur_sigma", type=float, default=None)
 
     # add shared arguments
     dataset_args(parser)

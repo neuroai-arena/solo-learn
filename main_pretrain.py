@@ -47,6 +47,7 @@ from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.knn_callback import KNNCallback
 from solo.utils.misc import make_contiguous, omegaconf_select
+from solo.utils.scheduler import GaussianBlurSigmaDecayCallback
 
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule, build_transform_pipeline_dali
@@ -109,6 +110,13 @@ def main(cfg: DictConfig):
         del cfg.resume_from_checkpoint
 
     callbacks = []
+
+    if cfg.gaussian_blur_decay_clb.enabled:
+        callbacks.append(GaussianBlurSigmaDecayCallback(
+            initial_sigma=cfg.gaussian_blur_decay_clb.initial_sigma,
+            final_sigma=cfg.gaussian_blur_decay_clb.final_sigma,
+            decay_steps=cfg.gaussian_blur_decay_clb.decay_steps,
+        ))
 
     if cfg.knn_clb.enabled:
         callbacks.append(KNNCallback(cfg.knn_clb))

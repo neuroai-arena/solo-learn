@@ -45,6 +45,7 @@ _N_CLASSES_PER_DATASET = {
     "STL10_FG": 10,
     "Places365_h5": 365,
     "SUN397": 397,
+    "SUN397_h5": 397,
     "Caltech101": 101,
     "imagenet1pct_42": 1000,
     "imagenet10pct_42": 1000,
@@ -55,46 +56,6 @@ _N_CLASSES_PER_DATASET = {
     "NYUv2": (1, 228, 304),
     "PascalVOC": (21, 224, 224)
 }
-
-# _SUPPORTED_DATASETS = [
-#     "cifar10",
-#     "cifar100",
-#     "cifar10_224",
-#     "cifar100_224",
-#     "imagenet",
-#     "imagenet100",
-#     "imagenet2",
-#     "imagenet2_100",
-#     "imagenet_42",
-#     "imagenet100_42",
-#     "imagenet100_im",
-#     'core50',
-#     "custom",
-#     "DTD",
-#     'Flowers102',
-#     'FGVCAircraft',
-#     'Food101',
-#     'OxfordIIITPet',
-#     'Places365',
-#     'StanfordCars',
-#     "STL10",
-#     "Places365_h5",
-#     "SUN397",
-#     "Caltech101",
-#     "imagenet1pct_42",
-#     "imagenet10pct_42",
-#     "toybox",
-#     "core50_bg",
-#     "feat",
-#     "COIL100",
-#     "STL10_224",
-#     "STL10_FG_224",
-#     "STL10_FG",
-#     "tiny",
-#     "SUN_rgbd",
-#     "NYUv2"
-# ]
-
 
 def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     """Adds specific default values/checks for dataset config.

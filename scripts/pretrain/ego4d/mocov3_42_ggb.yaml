@@ -4,7 +4,7 @@ defaults:
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
-gaussian_sigma: null
+gaussian_sigma:  9.549296585513721
 
 # disable hydra outputs
 hydra:
@@ -12,7 +12,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3_gs224_t15_ggb1"
+name: "mocov3_gs224_t15_ggb_log_decay"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -50,7 +50,7 @@ checkpoint:
   dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/ego4d/"
   frequency: 1
   keep_prev: True
-  every_n_iter: 5000
+  every_n_iter: 10000
 auto_resume:
   enabled: False
 wandb:
@@ -59,6 +59,13 @@ wandb:
   project: "EgocentricVision"
   group: "mocov3-rn50"
   job_type: "train"
+
+gaussian_blur_decay_clb:
+    enabled: True
+    initial_sigma: 9.549296585513721
+    final_sigma: 0.0
+    decay_steps: 0.4
+
 
 knn_clb:
   enabled: True
@@ -71,9 +78,10 @@ knn_clb:
   perform_on_validation: False
   perform_every_n_batches: 0.1 # perform every 10% of the training batches
   verbose: True
-  transform_kwargs:
-    global_gaussian_blur:
-      sigma: ${gaussian_sigma}
+#  transform_kwargs:
+#    global_gaussian_blur:
+#      sigma: ${gaussian_sigma}
+
 
 # overwrite PL stuff
 max_epochs: 1
