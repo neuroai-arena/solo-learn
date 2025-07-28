@@ -19,7 +19,7 @@ class Ego4d(Dataset):
     gaze_sizes = (112, 224, 336, 448, 540)
     corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9), (40,8)]
     readded = [71,56,67,74]
-    def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, **kwargs):
+    def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, fixations=None, **kwargs):
         super().__init__()
         # assert gaze_size in self.gaze_sizes +("random", )
 
@@ -30,6 +30,11 @@ class Ego4d(Dataset):
         self.gaze_size = gaze_size
         self.resize_gs = resize_gs
         self.foveation = foveation
+        if fixations:
+            self.fixations = np.load(fixations)
+            self.fixations = np.concatenate([[self.fixations[0]],self.fixations])
+        else:
+            self.fixations = None
 
 
         self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data_all95.h5"), "r")
@@ -134,8 +139,9 @@ class Ego4d(Dataset):
             return self.transform(image, image), -1
 
         new_video_name, new_idx, try_cpt = "", idx, 0
+        keep_searching = True
         # while video_name != new_video_name or not self.bool_clear_frames[new_idx]:
-        while video_name != new_video_name:
+        while keep_searching:
             new_idx = idx + random.randint(-self.time_window,self.time_window)
             new_idx = max(0,min(new_idx, self.size-1))
             if try_cpt > 5:
@@ -143,6 +149,11 @@ class Ego4d(Dataset):
             rn = self.dataset[new_idx]
             new_video_name = rn[0]
             try_cpt += 1
+
+            same_fixation = True
+            if self.fixations is not None:
+                same_fixation = self.fixations[idx] == self.fixations[new_idx]
+            keep_searching = (video_name != new_video_name) and same_fixation
 
 
         image_pair = self.open_image(rn) if new_idx != idx else image
