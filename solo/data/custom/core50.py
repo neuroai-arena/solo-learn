@@ -12,9 +12,10 @@ class Core50(Dataset):
                  h5_path: str,
                  backgrounds: Optional[Tuple[str, ...]] = None,
                  transform: Optional[Callable] = None,
+                 return_bg: bool = False,
                  ):
         self.transform = transform
-        print(h5_path, Path(h5_path).exists())
+        self.return_bg = return_bg
 
         self.h5_file = h5py.File(h5_path, "r")
 
@@ -42,6 +43,10 @@ class Core50(Dataset):
 
         if self.transform is not None:
             image = self.transform(image)
+
+        if self.return_bg:
+            bg_label = dp.bg
+            return image, target, bg_label
 
         return image, target
 

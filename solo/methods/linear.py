@@ -144,7 +144,7 @@ class LinearModel(pl.LightningModule):
             if not self.is_transformer and self.cfg.grid.layer_names is not None:
                 self.backbone = create_feature_extractor(self.backbone, return_nodes=list(self.cfg.grid.layer_names))
 
-            sample_output = self.forward_backbone(torch.randn(2, 3, 224, 224))
+            sample_output = self.forward_backbone(torch.randn(2, getattr(self.backbone, "channels", 3), 224, 224))
             if isinstance(sample_output, dict):
                 for k, v in sample_output.items():
                     print(k, v.shape)
@@ -437,8 +437,10 @@ class LinearModel(pl.LightningModule):
         else:
             feats = X
 
+        if not self.finetune:
+            feats = feats.detach()
 
-        logits = self.classifier(feats.detach())
+        logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
     def shared_step(

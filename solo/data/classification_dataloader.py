@@ -330,6 +330,15 @@ def prepare_transforms(dataset: str, **aug_kwargs) -> Tuple[nn.Module, nn.Module
     T_train = pipeline["T_train"]
     T_val = pipeline["T_val"]
 
+    print(aug_kwargs)
+    if aug_kwargs.get("force_gray", False):
+        T_train.transforms.insert(0, transforms.Grayscale(num_output_channels=1))
+        T_val.transforms.insert(0, transforms.Grayscale(num_output_channels=1))
+
+    if aug_kwargs.get("simple_norm", False):
+        T_train.transforms[-1] = transforms.Lambda(lambda x: x * 255.0)
+        T_val.transforms[-1] = transforms.Lambda(lambda x: x * 255.0)
+
     if aug_kwargs.get("global_gaussian_blur", None) is not None:
         sigma = aug_kwargs["global_gaussian_blur"]["sigma"]
         T_train.transforms.insert(0, GaussianBlur(sigma=sigma))

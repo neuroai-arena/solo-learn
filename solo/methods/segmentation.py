@@ -50,7 +50,7 @@ class SegmentationModel(LinearModel):
         super().__init__(backbone, cfg)
 
         img_size = (cfg.data.augmentations.img_size, cfg.data.augmentations.img_size)
-        if img_size !=self.backbone.patch_embed.img_size:
+        if img_size != self.backbone.patch_embed.img_size:
             print("Resampling position embeddings to fit new image size {}".format(img_size))
 
             new_H = img_size[0] // self.backbone.patch_embed.patch_size[0]

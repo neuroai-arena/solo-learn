@@ -15,6 +15,8 @@ from solo.data.cortical_magnification import radial_quad_isotrop_gridfun, img_co
 from solo.data.foveation import foveation
 
 
+GT_LEN = 492_288
+
 class Ego4d(Dataset):
     gaze_sizes = (112, 224, 336, 448, 540)
     corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9), (40,8)]
@@ -53,12 +55,11 @@ class Ego4d(Dataset):
 
         # if ego4d_subset != 1:
         #     self.clear_frames = self.clear_frames[:int(len(self.clear_frames)*ego4d_subset)]
-        self.size = len(self.dataset)
-        print("Length:", self.size)
+        print("Length:", len(self))
 
 
     def __len__(self):
-        return self.size
+        return len(self.dataset)
 
     def open_image(self, row):
         index, number, partition = int(row[6]), int(row[11]), str(int(row[5]))
@@ -137,7 +138,7 @@ class Ego4d(Dataset):
         # while video_name != new_video_name or not self.bool_clear_frames[new_idx]:
         while video_name != new_video_name:
             new_idx = idx + random.randint(-self.time_window,self.time_window)
-            new_idx = max(0,min(new_idx, self.size-1))
+            new_idx = max(0,min(new_idx, len(self)-1))
             if try_cpt > 5:
                 new_idx = idx
             rn = self.dataset[new_idx]
@@ -147,3 +148,18 @@ class Ego4d(Dataset):
 
         image_pair = self.open_image(rn) if new_idx != idx else image
         return self.transform(image, image_pair), -1
+
+
+
+class Ego4dGTGazeDataset(Ego4d):
+    def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, **kwargs):
+        super().__init__(data_root, transform, gaze_size, time_window, center_crop, resize_gs, foveation, **kwargs)
+        self.dataset = self.dataset[self.dataset[:, 5] == 0.0]
+        print("New Length:", len(self))
+
+
+class Ego4dSubsetGazeDataset(Ego4d):
+    def __init__(self, data_root, transform, partition, gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, **kwargs):
+        super().__init__(data_root, transform, gaze_size, time_window, center_crop, resize_gs, foveation, **kwargs)
+        self.dataset = self.dataset[self.dataset[:, 5] == partition][:GT_LEN]
+        print("New Length:", len(self))

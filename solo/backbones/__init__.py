@@ -19,6 +19,7 @@
 
 
 from .convnext import convnext_tiny, convnext_small, convnext_base, convnext_large
+from .hmax import load_hmax
 from .poolformer import (
     poolformer_s12,
     poolformer_s24,
@@ -53,4 +54,5 @@ __all__ = [
     "convnext_large",
     "wide_resnet28w2",
     "wide_resnet28w8",
+    "hmax"
 ]

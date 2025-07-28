@@ -77,7 +77,7 @@ def main(cfg: DictConfig):
 
     ckpt_path = cfg.pretrained_feature_extractor
 
-    assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
+    # assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
     if cfg.pretrained_feature_extractor is not None:
         state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
@@ -142,7 +142,7 @@ def main(cfg: DictConfig):
         auto_augment=cfg.auto_augment,
         train_backgrounds=cfg.data.train_backgrounds,
         val_backgrounds=cfg.data.val_backgrounds,
-        transform_kwargs=cfg.data.transform_kwargs
+        transform_kwargs=cfg.aug_kwargs
     )
 
     if cfg.data.format == "dali":

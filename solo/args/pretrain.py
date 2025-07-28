@@ -45,6 +45,8 @@ _SUPPORTED_DATASETS = [
     "imagenet2_100",
     "tiny",
     "ego4d",
+    "ego4d_gt_gaze",
+    "ego4d_partition",
     "nymeria"
 ]
 

@@ -141,7 +141,8 @@ def add_and_assert_aug_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     cfg.aug_kwargs.cm.enabled = omegaconf_select(cfg, "aug_kwargs.cm.enabled", False)
     cfg.aug_kwargs.cm.fov = omegaconf_select(cfg, "aug_kwargs.cm.fov", 20)
     cfg.aug_kwargs.cm.K = omegaconf_select(cfg, "aug_kwargs.cm.K", 10)
-
+    cfg.aug_kwargs.force_gray = omegaconf_select(cfg, "aug_kwargs.force_gray", False)
+    cfg.aug_kwargs.simple_norm = omegaconf_select(cfg, "aug_kwargs.simple_norm", False)
     return cfg
 
 def add_and_assert_lightning_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:

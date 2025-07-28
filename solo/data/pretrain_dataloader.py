@@ -32,7 +32,7 @@ from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 from torchvision.transforms import Compose
 
-from solo.data.custom.ego4d import Ego4d
+from solo.data.custom.ego4d import Ego4d, Ego4dGTGazeDataset, Ego4dSubsetGazeDataset
 from solo.data.custom.imagenet import ImgnetDataset
 from solo.data.custom.nymeria import Nymeria
 from solo.data.custom.tinyimgnet import TinyDataset
@@ -312,6 +312,8 @@ def build_transform_pipeline(dataset, cfg):
         "imagenet2_100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "imagenet2": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "ego4d": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+        "ego4d_gt_gaze": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+        "ego4d_partition": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
         "nymeria": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
     }
 
@@ -446,6 +448,10 @@ def prepare_datasets(
         )
     elif dataset in ["ego4d"]:
         train_dataset = dataset_with_index(Ego4d)(train_data_path, transform, **dataset_kwargs)
+    elif dataset in ["ego4d_gt_gaze"]:
+        train_dataset = dataset_with_index(Ego4dGTGazeDataset)(train_data_path, transform, **dataset_kwargs)
+    elif dataset in ["ego4d_partition"]:
+        train_dataset = dataset_with_index(Ego4dSubsetGazeDataset)(train_data_path, transform, **dataset_kwargs)
     elif dataset in ["nymeria"]:
         train_dataset = dataset_with_index(Nymeria)(train_data_path, transform, **dataset_kwargs)
     elif dataset == "tiny":

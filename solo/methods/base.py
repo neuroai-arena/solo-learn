@@ -50,6 +50,7 @@ from solo.backbones import (
     vit_tiny,
     wide_resnet28w2,
     wide_resnet28w8,
+    load_hmax,
 )
 from solo.utils.knn import WeightedKNNClassifier
 from solo.utils.lars import LARS
@@ -93,6 +94,7 @@ class BaseMethod(pl.LightningModule):
         "convnext_large": convnext_large,
         "wide_resnet28w2": wide_resnet28w2,
         "wide_resnet28w8": wide_resnet28w8,
+        "hmax": load_hmax,
     }
     _OPTIMIZERS = {
         "sgd": torch.optim.SGD,

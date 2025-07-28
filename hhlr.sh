@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ego4d_0
+#SBATCH --job-name=ego4d_boyl
 #SBATCH --time=14:00:00
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
@@ -19,4 +19,4 @@ export PYTHONFAULTHANDLER=1
 
 cd $HOME/solo-learn
 
-srun python run_eval_convnext.py --env hlr
+srun python main_pretrain.py --config-path scripts/pretrain/ego4d/ --config-name byol_resnet_hlr.yaml
