@@ -36,6 +36,7 @@ class Nymeria(Dataset):
 
         v = f"v{self.version}" if self.version >= 2 else ""
 
+
         self.hdf5_file = h5py.File(os.path.join(self.data_root, f"data{v}_fps{fps}_res{resolution}.h5"), "r")
         # self.hdf5_file_name = os.path.join(self.data_root, f"data{v}_fps{fps}_res{resolution}.h5")
         try:

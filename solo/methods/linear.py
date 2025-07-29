@@ -442,7 +442,7 @@ class LinearModel(pl.LightningModule):
         else:
             feats = X
 
-        logits = self.classifier(feats.detach())
+        logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
     def shared_step(

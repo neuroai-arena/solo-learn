@@ -150,10 +150,11 @@ class Ego4d(Dataset):
             new_video_name = rn[0]
             try_cpt += 1
 
-            same_fixation = True
             if self.fixations is not None:
                 same_fixation = self.fixations[idx] == self.fixations[new_idx]
-            keep_searching = (video_name != new_video_name) and same_fixation
+                keep_searching = (video_name != new_video_name) or not same_fixation
+            else:
+                keep_searching = (video_name != new_video_name)
 
 
         image_pair = self.open_image(rn) if new_idx != idx else image
