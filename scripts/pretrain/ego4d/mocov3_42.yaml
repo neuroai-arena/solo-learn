@@ -12,7 +12,7 @@ hydra:
     dir: .
 
 seed: 0
-name: "mocov3_gs224_t15_only_gt_gaze"
+name: "mocov3_rn50_gs224_t15_same_fixation"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -25,7 +25,7 @@ momentum:
   base_tau: 0.996
   final_tau: 0.996
 data:
-  dataset: ego4d_partition
+  dataset: ego4d
   train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/Ego4d/h5"
   val_path: None
   format: "h5"
@@ -35,7 +35,6 @@ data:
     time_window: 15
     center_crop: False #To compare gaze crop with a center crop with gaze size 540
     resize_gs: False  # resize gaze to 224 before applying transform
-    partition: 3.0
 optimizer:
   name: "lars"
   batch_size: 64

@@ -56,7 +56,7 @@ checkpoint:
   keep_prev: True
   every_n_iter: 5000
 auto_resume:
-  enabled: False
+  enabled: True
 
 
 gaussian_blur_decay_clb:
