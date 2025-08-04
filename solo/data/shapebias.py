@@ -32,6 +32,32 @@ class TripletDataset(Dataset):
         return images[0], images[1], images[2]
 
 
+def feature(f):
+    k = list(f.keys())[0]
+    return torch.flatten(f[k], 1)
+
+def eval_fc(dataloader, backbone, device):
+    shape_decision = 0
+    total_decision = 0
+
+    for im1, im2, im3 in dataloader:
+        f1, f2, f3 = backbone(im3.to(device)), backbone(im2.to(device)), backbone(im1.to(device))
+        if isinstance(f1, dict):
+            f1, f2, f3 = feature(f1), feature(f2), feature(f3)
+        # lf1, lf2, lf3 = classifier(f1), classifier(f2), classifier(f3)
+
+        f1_f3 = torch.nn.functional.cosine_similarity(f1, f3, dim=1)
+        f2_f3 = torch.nn.functional.cosine_similarity(f2, f3, dim=1)
+        shape_decision += (f1_f3 > f2_f3).float().sum()
+        total_decision += im1.shape[0]
+
+        # lf1_f3 = torch.nn.functional.cosine_similarity(lf1, lf3, dim=1)
+        # lf2_f3 = torch.nn.functional.cosine_similarity(lf2, lf3, dim=1)
+        # shape_decision_lin += (lf1_f3 > lf2_f3).float().sum()
+        # total_decision_lin += im1.shape[0]
+
+    return shape_decision / total_decision
+
 class ShapeBiasCallback(Callback):
     def __init__(self, cfg):
         """
@@ -60,44 +86,17 @@ class ShapeBiasCallback(Callback):
     def on_train_epoch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if trainer.current_epoch != 0:
             return
-        common_acc = self.eval_fc(self.dataloader_common, pl_module.backbone, pl_module.device)
+        common_acc = eval_fc(self.dataloader_common, pl_module.backbone, pl_module.device)
         pl_module.log_dict({"shape_acc": common_acc}, sync_dist=True, on_epoch=True)
 
 
     def on_train_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch % self.freq_epochs:
             return
-        common_acc = self.eval_fc(self.dataloader_common, pl_module.backbone, pl_module.device)
+        common_acc = eval_fc(self.dataloader_common, pl_module.backbone, pl_module.device)
         pl_module.log_dict({"shape_acc": common_acc}, sync_dist=True, on_epoch=True
                            )
                             # "novel_acc": novel_acc, "novel_acc_lin": novel_acc_lin})
-
-    def feature(self, f):
-        k = list(f.keys())[0]
-        return torch.flatten(f[k], 1)
-
-    def eval_fc(self, dataloader, backbone, device):
-        shape_decision = 0
-        total_decision = 0
-
-        for im1, im2, im3 in dataloader:
-            f1, f2, f3 = backbone(im3.to(device)), backbone(im2.to(device)), backbone(im1.to(device))
-            if isinstance(f1, dict):
-                f1, f2, f3 = self.feature(f1), self.feature(f2), self.feature(f3)
-            # lf1, lf2, lf3 = classifier(f1), classifier(f2), classifier(f3)
-
-            f1_f3 = torch.nn.functional.cosine_similarity(f1, f3, dim=1)
-            f2_f3 = torch.nn.functional.cosine_similarity(f2, f3, dim=1)
-            shape_decision += (f1_f3 > f2_f3).float().sum()
-            total_decision += im1.shape[0]
-
-            # lf1_f3 = torch.nn.functional.cosine_similarity(lf1, lf3, dim=1)
-            # lf2_f3 = torch.nn.functional.cosine_similarity(lf2, lf3, dim=1)
-            # shape_decision_lin += (lf1_f3 > lf2_f3).float().sum()
-            # total_decision_lin += im1.shape[0]
-
-        return shape_decision / total_decision
-
 
 
 

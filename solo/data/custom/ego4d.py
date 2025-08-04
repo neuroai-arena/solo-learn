@@ -19,7 +19,7 @@ class Ego4d(Dataset):
     gaze_sizes = (112, 224, 336, 448, 540)
     corrupted = [(24,14), (60, 16), (61, 13), (64, 12), (65,9), (40,8)]
     readded = [71,56,67,74]
-    def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, fixations=None, **kwargs):
+    def __init__(self, data_root, transform,gaze_size=224, time_window=15, center_crop=False, resize_gs=False, foveation=None, fixations=None, inverse_fixations=False, **kwargs):
         super().__init__()
         # assert gaze_size in self.gaze_sizes +("random", )
 
@@ -30,6 +30,7 @@ class Ego4d(Dataset):
         self.gaze_size = gaze_size
         self.resize_gs = resize_gs
         self.foveation = foveation
+        self.inverse_fixations = inverse_fixations
         if fixations:
             self.fixations = np.load(fixations)
             self.fixations = np.concatenate([[self.fixations[0]],self.fixations])
@@ -151,7 +152,7 @@ class Ego4d(Dataset):
             try_cpt += 1
 
             if self.fixations is not None:
-                same_fixation = self.fixations[idx] == self.fixations[new_idx]
+                same_fixation = self.fixations[idx] == self.fixations[new_idx] if not self.inverse_fixations else self.fixations[idx] != self.fixations[new_idx]
                 keep_searching = (video_name != new_video_name) or not same_fixation
             else:
                 keep_searching = (video_name != new_video_name)
