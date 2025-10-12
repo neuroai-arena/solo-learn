@@ -443,7 +443,7 @@ class BaseMethod(pl.LightningModule):
             out = {"feats": feats}
 
         if not self.cfg.no_validation:
-            logits = self.classifier(feats.detach())
+            logits = self.classifier(out["feats"].detach())
             out.update({"logits": logits})
         return out
 

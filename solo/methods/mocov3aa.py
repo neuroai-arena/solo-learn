@@ -27,14 +27,14 @@ import torch.nn as nn
 import torchvision
 from torchvision import transforms
 from torchvision.models.feature_extraction import create_feature_extractor
-from torchvision.models.resnet import Bottleneck, BasicBlock, conv1x1
 
 from solo.losses.mocov3 import mocov3_loss_func
 from solo.methods import MoCoV3
 from solo.methods.base import BaseMomentumMethod
-from solo.utils.actions import get_crop_diffparams
-from solo.utils.misc import omegaconf_select
+from solo.utils.actions import get_crop_diffparams, prepare_aa_input
+from solo.utils.misc import omegaconf_select, get_rank
 from solo.utils.momentum import initialize_momentum_params
+from solo.utils.visual_streams import create_stream, init_cfg_streams
 
 
 class AAMoCoV3(MoCoV3):
@@ -48,25 +48,22 @@ class AAMoCoV3(MoCoV3):
         cfg.method_kwargs.aa_weight = omegaconf_select(cfg, "method_kwargs.aa_weight", 1)
         cfg.method_kwargs.tt_weight = omegaconf_select(cfg, "method_kwargs.tt_weight", 1)
         cfg.method_kwargs.aa_temperature = omegaconf_select(cfg, "method_kwargs.aa_temperature", 0.2)
-        cfg.method_kwargs.layer_names = omegaconf_select(cfg, "method_kwargs.layer_names", ["avgpool"])
         cfg.method_kwargs.equivariant = omegaconf_select(cfg, "method_kwargs.equivariant", False)
         cfg.method_kwargs.use_crop_params = omegaconf_select(cfg, "method_kwargs.use_crop_params", 0)
-
-        self.cfg.method_kwargs.dorsal = omegaconf_select(self.cfg, "method_kwargs.dorsal", {})
-        self.cfg.method_kwargs.dorsal.in_planes = omegaconf_select(self.cfg, "method_kwargs.dorsal.in_planes", 2048)
-        self.cfg.method_kwargs.dorsal.strides = omegaconf_select(self.cfg, "method_kwargs.dorsal.strides", [])
-        self.cfg.method_kwargs.dorsal.layers = omegaconf_select(self.cfg, "method_kwargs.dorsal.layers", 0)
-        self.cfg.method_kwargs.dorsal.last_kernel = omegaconf_select(self.cfg, "method_kwargs.dorsal.last_kernel", 7)
-
-        self.cfg.method_kwargs.dorsal.layers = max(self.cfg.method_kwargs.dorsal.layers,len(self.cfg.method_kwargs.dorsal.strides))
-        self.cfg.method_kwargs.dorsal.strides = self.cfg.method_kwargs.dorsal.strides + [1] * (self.cfg.method_kwargs.dorsal.layers - len(self.cfg.method_kwargs.dorsal.strides))
+        cfg = init_cfg_streams(cfg)
 
         self.backbone = create_feature_extractor(self.backbone, return_nodes=list(cfg.method_kwargs.layer_names))
         self.momentum_backbone = create_feature_extractor(self.momentum_backbone, return_nodes=list(cfg.method_kwargs.layer_names))
 
-        self.dorsal = self.create_dorsal_stream()
-        self.momentum_dorsal = self.create_dorsal_stream()
-        aa_input_dim = 9
+        self.ventral = create_stream(self.cfg.method_kwargs.ventral)
+        self.momentum_ventral = create_stream(self.cfg.method_kwargs.ventral)
+
+        self.dorsal = create_stream(cfg.method_kwargs.dorsal)
+        self.momentum_dorsal = create_stream(cfg.method_kwargs.dorsal)
+
+        aa_input_dim = 9 if cfg.data.dataset == "nymeria" else 0
+        if hasattr(cfg.data.dataset_kwargs, "as_euler") and cfg.data.dataset_kwargs.as_euler:
+            aa_input_dim = 11
         try:
             if self.cfg.data.dataset_kwargs.gaze_size != self.cfg.data.dataset_kwargs.min_gaze_size and self.cfg.data.dataset_kwargs.size_gaze_aware:
                 aa_input_dim += 1
@@ -74,6 +71,9 @@ class AAMoCoV3(MoCoV3):
             pass
         if self.cfg.method_kwargs.use_crop_params == 2:
             aa_input_dim += 4
+        if self.cfg.method_kwargs.use_crop_params == 3:
+            aa_input_dim += 5
+
 
         self.action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
                                                 aa_input_dim,
@@ -148,64 +148,10 @@ class AAMoCoV3(MoCoV3):
         initialize_momentum_params(self.vis_pre_action_projector, self.momentum_vis_pre_action_projector)
         initialize_momentum_params(self.vis_action_projector, self.momentum_vis_action_projector)
         initialize_momentum_params(self.dorsal, self.momentum_dorsal)
+        initialize_momentum_params(self.ventral, self.momentum_ventral)
+        if get_rank() == 0:
+            print(self)
 
-
-    def _make_layer(
-        self,
-        inplanes,
-        block: Type[Union[BasicBlock, Bottleneck]],
-        planes: int,
-        blocks: int,
-        strides: int,
-    ) -> nn.Sequential:
-        norm_layer = nn.BatchNorm2d
-        downsample = None
-
-        layers = []
-
-        for i in range(0, blocks):
-            if i > 0:
-                inplanes = planes * block.expansion
-
-            if strides[i] != 1 or inplanes != planes * block.expansion:
-                downsample = nn.Sequential(
-                    conv1x1(inplanes, planes * block.expansion, strides[i]),
-                    norm_layer(planes * block.expansion),
-                )
-            else:
-                downsample = None
-            layers.append(
-                block(
-                    inplanes,
-                    planes,
-                    strides[i],
-                    downsample,
-                    base_width=64,
-                    norm_layer=norm_layer,
-                )
-            )
-        # layers.append(self.avgpool = nn.AdaptiveAvgPool2d((1, 1)))
-        layers.append(nn.Conv2d(inplanes, inplanes, self.cfg.method_kwargs.dorsal.last_kernel))
-        layers.append(nn.Flatten())
-        layers.append(nn.BatchNorm1d(inplanes))
-        layers.append(nn.ReLU(inplace=True))
-        return nn.Sequential(*layers)
-
-    def create_dorsal_stream(self):
-
-        cfg_ds = self.cfg.method_kwargs.dorsal
-
-        if len(self.cfg.method_kwargs.layer_names) == 1:
-            return nn.Flatten()
-
-        dorsal = self._make_layer(cfg_ds.in_planes, Bottleneck, 512, cfg_ds.layers, strides=cfg_ds.strides)
-        for m in dorsal.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-        return dorsal
 
     @property
     def learnable_params(self) -> List[dict]:
@@ -221,8 +167,12 @@ class AAMoCoV3(MoCoV3):
             {"name": "vis_action_projector", "params": self.vis_action_projector.parameters()},
             {"name": "vis_pre_action_projector", "params": self.vis_pre_action_projector.parameters()},
             {"name": "vis_action_predictor", "params": self.vis_action_predictor.parameters()},
-            {"name": "dorsal", "params": self.dorsal.parameters()},
         ]
+
+        if self.cfg.method_kwargs.dorsal.enabled:
+            extra_learnable_params.append({"name": "dorsal", "params": self.dorsal.parameters()})
+        if self.cfg.method_kwargs.ventral.enabled:
+            extra_learnable_params.append({"name": "ventral", "params": self.ventral.parameters()})
         return super().learnable_params + extra_learnable_params
 
     @property
@@ -236,9 +186,12 @@ class AAMoCoV3(MoCoV3):
         extra_momentum_pairs = [
             (self.action_projector, self.momentum_action_projector),
             (self.vis_action_projector, self.momentum_vis_action_projector),
-            (self.vis_pre_action_projector, self.momentum_vis_pre_action_projector),
-            (self.dorsal, self.momentum_dorsal)
+            (self.vis_pre_action_projector, self.momentum_vis_pre_action_projector)
         ]
+        if self.cfg.method_kwargs.dorsal.enabled:
+            extra_momentum_pairs.append((self.dorsal, self.momentum_dorsal))
+        if self.cfg.method_kwargs.ventral.enabled:
+            extra_momentum_pairs.append((self.ventral, self.momentum_ventral))
         return super().momentum_pairs + extra_momentum_pairs
 
     def forward(self, X: torch.Tensor) -> Dict[str, Any]:
@@ -252,19 +205,34 @@ class AAMoCoV3(MoCoV3):
         """
 
         out = BaseMomentumMethod.forward(self, X)
-        z = self.projector(out["feats"])
+        o = out[self.cfg.method_kwargs.ventral.layer_name]
+        o = self.ventral(o)
+
+        z = self.projector(o)
         # out.update({"q": q, "z": z})
         out.update({"z": z})
         return out
 
-    def prepare_aa_input(self, av1, av2, batch ):
-        if not self.cfg.method_kwargs.use_crop_params == 1:
-            return torch.cat((av1, av2), dim=1)
-        _, X, targets = batch
-        params = [x[1] for x in X[:2]]
-        # print(get_action(params[0], params[1]))
-        crop_diff = get_crop_diffparams(params[0], params[1])#[:, :self.cfg.method_kwargs.num_crop_params]
-        return torch.cat((av1, av2, crop_diff),dim=1)
+    @torch.no_grad()
+    def momentum_forward(self, X: torch.Tensor) -> Dict[str, Any]:
+        """Performs forward pass of the online backbone, projector and predictor.
+
+        Args:
+            X (torch.Tensor): batch of images in tensor format.
+
+        Returns:
+            Dict[str, Any]: a dict containing the outputs of the parent and the projected features.
+        """
+
+        out = BaseMomentumMethod.momentum_forward(self, X)
+        o = out[self.cfg.method_kwargs.ventral.layer_name]
+        o = self.momentum_ventral(o)
+
+        k = self.momentum_projector(o)
+        # out.update({"q": q, "z": z})
+        out.update({"k": k})
+        return out
+
 
     def training_step(self, batch: Sequence[Any], batch_idx: int) -> torch.Tensor:
         """Training step for BYOL reusing BaseMethod training step.
@@ -282,25 +250,27 @@ class AAMoCoV3(MoCoV3):
         class_loss = out["loss"]
 
         # AA stuff
-        v1 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][0])
-        v2 = self.dorsal(out[self.cfg.method_kwargs.layer_names[-1]][1])
+        v1 = self.dorsal(out[self.cfg.method_kwargs.dorsal.layer_name][0])
+        v2 = self.dorsal(out[self.cfg.method_kwargs.dorsal.layer_name][1])
 
 
         av1 = self.vis_pre_action_projector(v1)
         av2 = self.vis_pre_action_projector(v2)
 
-        vis_action_proj = self.vis_action_projector(self.prepare_aa_input(av1, av2, batch))
+        vis_action_proj = self.vis_action_projector(prepare_aa_input(self.cfg, av1, av2, batch))
         vis_action_pred = self.vis_action_predictor(vis_action_proj)
 
-        mom_v1 = self.momentum_dorsal(out[self.cfg.method_kwargs.layer_names[-1]][0])
-        mom_v2 = self.momentum_dorsal(out[self.cfg.method_kwargs.layer_names[-1]][1])
+        mom_v1 = self.momentum_dorsal(out[self.cfg.method_kwargs.dorsal.layer_name][0])
+        mom_v2 = self.momentum_dorsal(out[self.cfg.method_kwargs.dorsal.layer_name][1])
 
 
         step , X, targets = batch
-        action = X[-1]
-        if self.cfg.method_kwargs.use_crop_params == 2:
-            action = torch.cat((action, get_crop_diffparams(X[0][1], X[1][1])), dim=1)
-
+        # action = X[-1]
+        action = X[-1] if self.cfg.data.dataset == "nymeria" else None
+        # Add crop params if required
+        if self.cfg.method_kwargs.use_crop_params in [2,3]:
+            crop_diff = get_crop_diffparams(X[0][1], X[1][1])
+            action = crop_diff if action is None else torch.cat((action, crop_diff), dim=1)
 
         action_proj = self.action_projector(action)
         action_pred = self.action_predictor(action_proj)
@@ -308,7 +278,7 @@ class AAMoCoV3(MoCoV3):
         with torch.no_grad():
             amom_v1 = self.momentum_vis_pre_action_projector(mom_v1)
             amom_v2 = self.momentum_vis_pre_action_projector(mom_v2)
-            mom_vis_action_proj = self.momentum_vis_action_projector(self.prepare_aa_input(amom_v1, amom_v2, batch))
+            mom_vis_action_proj = self.momentum_vis_action_projector(prepare_aa_input(self.cfg, amom_v1, amom_v2, batch))
             mom_action_proj = self.momentum_action_projector(action)
 
         aa_contrastive_loss =  mocov3_loss_func(
@@ -351,7 +321,14 @@ class AAMoCoV3(MoCoV3):
         #     print("finish saving")
 
         self.log_dict(metrics, on_epoch=True, on_step=True, sync_dist=True)
+        loss = self.cfg.method_kwargs.tt_weight * contrastive_loss + class_loss + self.cfg.method_kwargs.aa_weight * aa_contrastive_loss
 
 
-        return self.cfg.method_kwargs.tt_weight * contrastive_loss + class_loss + self.cfg.method_kwargs.aa_weight * aa_contrastive_loss
+        # loss.mean().backward()  # keep graph if needed for debugging
+        #
+        # for name, param in self.named_parameters():
+        #     if param.requires_grad and param.grad is None:
+        #         print(f"[UNUSED] {name}")
+
+        return loss
 

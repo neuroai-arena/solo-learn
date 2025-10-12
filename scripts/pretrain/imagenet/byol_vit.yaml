@@ -14,7 +14,7 @@ hydra:
 name: "byol-imagenet"
 method: "byol"
 backbone:
-  name: "resnet50"
+  name: "vit_small"
 method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
@@ -29,38 +29,19 @@ data:
   format: "h5"
   num_workers: 4
 optimizer:
-  name: "lars"
-  batch_size: 128
-  lr: 0.45
+  name: "adamw"
+  batch_size: 64
+  lr: 3e-4
   classifier_lr: 0.2
-  weight_decay: 1e-6
-  kwargs:
-    clip_lr: False
-    eta: 0.001
-    exclude_bias_n_norm: True
+  weight_decay: 0.1
 scheduler:
   name: "warmup_cosine"
 checkpoint:
   enabled: True
-  dir: "/scratch/autolearn/aubret/solo_trained/"
+  dir: "trained_models"
   frequency: 1
 auto_resume:
   enabled: True
-
-knn_clb:
-  enabled: True
-  verbose: True
-  dataset: imagenet
-  k:
-    - 10
-    - 20
-    - 50
-    - 100
-  perform_on_validation: True
-  train_path: "/scratch/autolearn/aubret/imgnet/data/"
-  val_path: "/scratch/autolearn/aubret/imgnet/data/"
-  format: h5
-  freq_epochs: 20
 
 # overwrite PL stuff
 max_epochs: 100
@@ -68,5 +49,5 @@ devices: [0, 1, 2, 3, 4, 5, 6 ,7]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
 accumulate_grad_batches: 1

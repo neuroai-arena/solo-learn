@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from solo.methods import METHODS, BaseMethod, LinearModel
+from solo.utils.misc import omegaconf_select
 
 
 @torch.no_grad()
@@ -58,12 +59,19 @@ class LinearWrapper(nn.Module):
     def forward(self, input):
         out = self.backbone(input)
         out = out["logits"]
+        if not isinstance(out, dict):
+            return out
 
         lr = 0.4
         layer_name="backbone.avgpool"
         clf_str = f"classifier-layer={layer_name}-lr_{lr:.8f}".replace(".", ":")
+
+        if not clf_str in out:
+            lr = 0.8
+            clf_str = f"classifier-layer={layer_name}-lr_{lr:.8f}".replace(".", ":")
         out = out[clf_str]
         return out
+
 
 
 def main():
@@ -87,16 +95,31 @@ def main():
 
     cfg = OmegaConf.create(method_args)
     backbone_model = BaseMethod._BACKBONES[cfg.backbone.name]
-    backbone = backbone_model(method=cfg.pretrain_method, **cfg.backbone.kwargs)
-    backbone = ModelWrapper(backbone, cfg.backbone.name)
 
-    cfg.grid.layer_names = [l for l in cfg.grid.layer_names if not "head" in l ]
-    cfg.grid.lr = [0.4]
-    model = LinearModel(backbone, loss_func=torch.nn.CrossEntropyLoss(), mixup_func=False, cfg=cfg)
-    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(state["state_dict"], strict=False)
-    model = LinearWrapper(model)
-
+    #Off line linear probing with multiple learning rates
+    if hasattr(cfg, "pretrain_method"):
+        method = cfg.pretrain_method
+        cfg.grid.layer_names = [l for l in cfg.grid.layer_names if not "head" in l]
+        cfg.grid.lr = [0.4]
+        backbone = backbone_model(method=method, **cfg.backbone.kwargs)
+        backbone = ModelWrapper(backbone, cfg.backbone.name)
+        model = LinearModel(backbone, loss_func=torch.nn.CrossEntropyLoss(), mixup_func=False, cfg=cfg)
+        state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(state["state_dict"], strict=False)
+        model = LinearWrapper(model)
+    else:
+        #online linear probing when training on I1K
+        method = cfg.method
+        backbone = backbone_model(method=method, **cfg.backbone.kwargs)
+        backbone.fc = nn.Identity()
+        # backbone = ModelWrapper(backbone, cfg.backbone.name)
+        cfg.grid = omegaconf_select(cfg, "grid", {})
+        cfg.grid.enabled = False
+        model = LinearModel(backbone, loss_func=torch.nn.CrossEntropyLoss(), mixup_func=False, cfg=cfg)
+        state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        incomp_keys = model.load_state_dict(state["state_dict"], strict=False)
+        model = LinearWrapper(model)
+        print(incomp_keys)
 
     all_datasets = ['sketch', 'stylized', 'edge', 'silhouette', 'cue-conflict']
     # all_datasets = list(datasets.list_datasets().keys())

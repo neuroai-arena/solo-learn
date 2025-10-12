@@ -40,6 +40,7 @@ class Checkpointer(Callback):
         frequency: int = 1,
         keep_prev: bool = False,
         save_last: bool = False,
+        save_first: bool = False,
     ):
         """Custom checkpointer callback that stores checkpoints in an easier to access way.
 
@@ -60,6 +61,7 @@ class Checkpointer(Callback):
         self.frequency = frequency
         self.keep_prev = keep_prev
         self.save_last = save_last
+        self.save_first = save_first
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: DictConfig) -> DictConfig:
@@ -79,6 +81,7 @@ class Checkpointer(Callback):
         cfg.checkpoint.keep_prev = omegaconf_select(cfg, "checkpoint.keep_prev", default=False)
         cfg.checkpoint.every_n_iter = omegaconf_select(cfg, "checkpoint.every_n_iter", default=0)
         cfg.checkpoint.save_last = omegaconf_select(cfg, "checkpoint.save_last", default=True)
+        cfg.checkpoint.save_first = omegaconf_select(cfg, "checkpoint.save_first", default=False)
 
         return cfg
 
@@ -141,22 +144,25 @@ class Checkpointer(Callback):
         Args:
             trainer (pl.Trainer): pytorch lightning trainer object.
         """
+        try:
+            if not trainer.sanity_checking:
+                epoch = trainer.current_epoch  # type: ignore
+                ckpt = self.path / self.ckpt_placeholder.format(epoch=epoch, step=trainer.global_step)
+                trainer.save_checkpoint(ckpt)
 
-        if not trainer.sanity_checking:
-            epoch = trainer.current_epoch  # type: ignore
-            ckpt = self.path / self.ckpt_placeholder.format(epoch=epoch, step=trainer.global_step)
-            trainer.save_checkpoint(ckpt)
-
-            if (
-                trainer.is_global_zero
-                and self.last_ckpt
-                and self.last_ckpt != ckpt
-                and not self.keep_prev
-            ):
-                os.remove(
-                    self.last_ckpt,
-                )
-            self.last_ckpt = ckpt
+                if (
+                    trainer.is_global_zero
+                    and self.last_ckpt
+                    and self.last_ckpt != ckpt
+                    and not self.keep_prev
+                ):
+                    os.remove(
+                        self.last_ckpt,
+                    )
+                self.last_ckpt = ckpt
+        except Exception as e:
+            print(e)
+            print(ckpt)
 
     def on_train_start(self, trainer: pl.Trainer, _):
         """Executes initial setup and saves arguments.
@@ -167,6 +173,11 @@ class Checkpointer(Callback):
 
         self.initial_setup(trainer)
         self.save_args(trainer)
+        if self.save_first:
+            print("Saving first checkpoint")
+            if not trainer.sanity_checking:
+                ckpt = self.path / self.ckpt_placeholder.format(epoch='first', step='first')
+                trainer.save_checkpoint(ckpt)
 
     def on_train_epoch_end(self, trainer: pl.Trainer, _):
         """Tries to save current checkpoint at the end of each train epoch.
@@ -212,6 +223,8 @@ class Checkpointer(Callback):
         """
         if self.cfg.checkpoint.every_n_iter and batch_idx % self.cfg.checkpoint.every_n_iter == 0:
             self.save_iter_wise(trainer, batch_idx)
+
+
 
     def on_train_end(self, trainer: pl.Trainer, _):
         """Saves the last checkpoint if needed.

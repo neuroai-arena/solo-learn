@@ -20,6 +20,7 @@
 from solo.methods.barlow_twins import BarlowTwins
 from solo.methods.base import BaseMethod
 from solo.methods.byol import BYOL
+from solo.methods.byolaa import AABYOL
 from solo.methods.deepclusterv2 import DeepClusterV2
 from solo.methods.dino import DINO
 from solo.methods.linear import LinearModel
@@ -29,6 +30,7 @@ from solo.methods.mocov3 import MoCoV3
 from solo.methods.mocov3aa import AAMoCoV3
 from solo.methods.mocov3aaplus import AAMoCoV3Plus
 from solo.methods.mocov3ciper import CiperMoCoV3
+from solo.methods.mocov4 import MoCoV4
 from solo.methods.nnbyol import NNBYOL
 from solo.methods.nnclr import NNCLR
 from solo.methods.nnsiam import NNSiam
@@ -52,11 +54,13 @@ METHODS = {
     # methods
     "barlow_twins": BarlowTwins,
     "byol": BYOL,
+    "aabyol": AABYOL,
     "deepclusterv2": DeepClusterV2,
     "dino": DINO,
     "mae": MAE,
     "mocov2plus": MoCoV2Plus,
     "mocov3": MoCoV3,
+    "mocov4": MoCoV4,
     "aamocov3": AAMoCoV3,
     "aamocov3+": AAMoCoV3Plus,
     "cipermocov3": CiperMoCoV3,
@@ -85,6 +89,7 @@ __all__ = [
     "LinearModel",
     "MoCoV2",
     "MoCoV3",
+    "MoCoV4",
     "NNBYOL",
     "NNCLR",
     "NNSiam",
@@ -97,6 +102,7 @@ __all__ = [
     "VICReg",
     "WMSE",
     "All4One",
+    "AABYOL",
     "AAMoCoV3",
     "AAMoCoV3Plus",
     "AASimCLR",

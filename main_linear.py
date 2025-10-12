@@ -91,7 +91,7 @@ def main(cfg: DictConfig):
     backbone = backbone_model(method=cfg.pretrain_method, **cfg.backbone.kwargs)
     if cfg.backbone.name.startswith("resnet"):
         # remove fc layer
-        backbone.fc = nn .Identity()
+        backbone.fc = nn.Identity()
         cifar = cfg.data.dataset in ["cifar10", "cifar100"]
         if cifar:
             backbone.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=2, bias=False)
@@ -123,7 +123,7 @@ def main(cfg: DictConfig):
         _keys = backbone.load_state_dict(state, strict=False)
         # if "vit" in cfg.backbone.name:
         #     fix_pos_embedding(backbone, (cfg.data.augmentations.img_size, cfg.data.augmentations.img_size))
-        # print(_keys)
+        print(_keys)
         logging.info(f"Loaded {ckpt_path}")
         if cfg.use_projector:
             projector = build_mlp(len([k for k in projector_state.keys() if "weight" in k])//2 +1,  cfg.projector.proj_input_dim, cfg.projector.proj_hidden_dim, cfg.projector.proj_output_dim, True)
@@ -161,7 +161,7 @@ def main(cfg: DictConfig):
         # assert cfg.precision==32, "Depth estimation does not work with 16 precision, probably because of interpolate (cf. torch webpage)"
         class DepthLoss(nn.Module):
             def forward(self, pred, target):
-                print(torch.max(pred), torch.max(target), torch.min(target), torch.min(pred))
+                # print(torch.max(pred), torch.max(target), torch.min(target), torch.min(pred))
                 # mask = (target > 0.01) & (target < 0.99)
                 mask = target > 0.01
                 pred = torch.nn.functional.interpolate(pred, size=target.shape[2:], mode='bilinear', align_corners=False)

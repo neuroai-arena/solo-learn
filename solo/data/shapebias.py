@@ -79,23 +79,35 @@ class ShapeBiasCallback(Callback):
         dataset_common = TripletDataset(os.path.join(self.cfg.path, "shape_simpletext"), transform=preprocess)
         self.dataloader_common = DataLoader(dataset_common, batch_size=32, shuffle=False, pin_memory=True, sampler=DistributedSampler(dataset_common, shuffle=False))
 
+        dataset_common2 = TripletDataset(os.path.join(self.cfg.path, "shape_simpletext2"), transform=preprocess)
+        self.dataloader_common2 = DataLoader(dataset_common2, batch_size=32, shuffle=False, pin_memory=True, sampler=DistributedSampler(dataset_common2, shuffle=False))
 
-    # dataset_novel = TripletDataset(os.path.join(cfg.path, "simpleshape_simpletext"), transform=preprocess)
-        # self.dataloader_novel = DataLoader(dataset_novel, batch_size=32, shuffle=False, pin_memory=True)
+
+        dataset_novel = TripletDataset(os.path.join(self.cfg.path, "simpleshape_simpletext"), transform=preprocess)
+        self.dataloader_novel = DataLoader(dataset_novel, batch_size=32, shuffle=False, pin_memory=True, sampler=DistributedSampler(dataset_novel, shuffle=False))
 
     def on_train_epoch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if trainer.current_epoch != 0:
             return
         common_acc = eval_fc(self.dataloader_common, pl_module.backbone, pl_module.device)
-        pl_module.log_dict({"shape_acc": common_acc}, sync_dist=True, on_epoch=True)
+        novel_acc = eval_fc(self.dataloader_novel, pl_module.backbone, pl_module.device)
+        common_acc_cat = eval_fc(self.dataloader_common2, pl_module.backbone, pl_module.device)
+        pl_module.log_dict({"shape_acc": common_acc,
+                            "novel_shape_acc": novel_acc,
+                            "shape_category_acc": common_acc_cat
+                            }, sync_dist=True, on_epoch=True)
 
 
     def on_train_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch % self.freq_epochs:
             return
         common_acc = eval_fc(self.dataloader_common, pl_module.backbone, pl_module.device)
-        pl_module.log_dict({"shape_acc": common_acc}, sync_dist=True, on_epoch=True
-                           )
+        novel_acc = eval_fc(self.dataloader_novel, pl_module.backbone, pl_module.device)
+        common_acc_cat = eval_fc(self.dataloader_common2, pl_module.backbone, pl_module.device)
+        pl_module.log_dict({"shape_acc": common_acc,
+                            "novel_shape_acc": novel_acc,
+                            "shape_category_acc": common_acc_cat
+                            }, sync_dist=True, on_epoch=True)
                             # "novel_acc": novel_acc, "novel_acc_lin": novel_acc_lin})
 
 

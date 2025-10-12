@@ -11,14 +11,17 @@ hydra:
   run:
     dir: .
 
-name: "byol-imagenet"
-method: "byol"
+name: "mocov3-imagenet"
+method: "mocov3"
 backbone:
   name: "resnet50"
+  kwargs:
+    zero_init_residual: True
 method_kwargs:
   proj_hidden_dim: 4096
   proj_output_dim: 256
   pred_hidden_dim: 4096
+  temperature: 0.2
 momentum:
   base_tau: 0.99
   final_tau: 1.0
@@ -42,7 +45,7 @@ scheduler:
   name: "warmup_cosine"
 checkpoint:
   enabled: True
-  dir: "/scratch/autolearn/aubret/solo_trained/"
+  dir: "trained_models"
   frequency: 1
 auto_resume:
   enabled: True
@@ -61,12 +64,11 @@ knn_clb:
   val_path: "/scratch/autolearn/aubret/imgnet/data/"
   format: h5
   freq_epochs: 20
-
 # overwrite PL stuff
 max_epochs: 100
 devices: [0, 1, 2, 3, 4, 5, 6 ,7]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16-mixed
+precision: 32
 accumulate_grad_batches: 1

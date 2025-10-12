@@ -149,6 +149,9 @@ class Ego4d(Dataset):
                 new_idx = idx
             rn = self.dataset[new_idx]
             new_video_name = rn[0]
+            if try_cpt > 5:
+                break
+
             try_cpt += 1
 
             if self.fixations is not None:

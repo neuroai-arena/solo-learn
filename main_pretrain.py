@@ -128,6 +128,7 @@ def main(cfg: DictConfig):
             frequency=cfg.checkpoint.frequency,
             keep_prev=cfg.checkpoint.keep_prev,
             save_last=cfg.checkpoint.save_last,
+            save_first=cfg.checkpoint.save_first
         )
         callbacks.append(ckpt)
 

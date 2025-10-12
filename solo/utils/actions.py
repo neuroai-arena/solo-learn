@@ -18,4 +18,15 @@ def get_crop_diffparams(src1, src2):
 
     # if len(src1) > 4:
     # return torch.stack((d_cx, d_cy, d_sx, d_sy, torch.abs(src1[:, 4] - src2[:, 4])), dim=1)
+    if src2.shape[1] > 4:
+        return torch.stack((d_cx, d_cy, d_sx, d_sy, src2[:, 4] - src1[:, 4]), dim=1)
     return torch.stack((d_cx, d_cy, d_sx, d_sy), dim=1)
+
+def prepare_aa_input(cfg, av1, av2, batch ):
+    if not cfg.method_kwargs.use_crop_params == 1:
+        return torch.cat((av1, av2), dim=1)
+    _, X, targets = batch
+    params = [x[1] for x in X[:2]]
+    # print(get_action(params[0], params[1]))
+    crop_diff = get_crop_diffparams(params[0], params[1])#[:, :self.cfg.method_kwargs.num_crop_params]
+    return torch.cat((av1, av2, crop_diff),dim=1)

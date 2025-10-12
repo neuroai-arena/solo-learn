@@ -210,6 +210,13 @@ class Solarization:
 
         return ImageOps.solarize(img)
 
+class HorizontalFlipWithParams:
+    dim = 1
+    def __call__(self, img):
+        r = random.random() < 0
+        if r:
+            img = transforms.functional.hflip(img)
+        return img, torch.tensor([r])
 
 class RandomResizedCropWithParams:
     dim = 4
@@ -475,7 +482,10 @@ def build_transform_pipeline(dataset, cfg):
         augmentations.append(transforms.RandomApply([Equalization()], p=cfg.equalization.prob))
 
     if cfg.horizontal_flip.prob:
-        augmentations.append(transforms.RandomHorizontalFlip(p=cfg.horizontal_flip.prob))
+        if hasattr(cfg.horizontal_flip, "params") and cfg.horizontal_flip.params:
+            augmentations.append(HorizontalFlipWithParams())
+        else:
+            augmentations.append(transforms.RandomHorizontalFlip(p=cfg.horizontal_flip.prob))
 
     augmentations.append(transforms.ToTensor())
     augmentations.append(transforms.Normalize(mean=mean, std=std))

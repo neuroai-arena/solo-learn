@@ -93,6 +93,7 @@ def add_and_assert_knn_clb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert not OmegaConf.is_missing(cfg, "knn_clb.val_path")
     assert cfg.knn_clb.dataset in list( _CLF_N_CLASSES_PER_DATASET.keys())
 
+    cfg.knn_clb.enabled = omegaconf_select(cfg, "knn_clb.enabled", True)
     cfg.knn_clb.format = omegaconf_select(cfg, "knn_clb.format", "image_folder")
     cfg.knn_clb.batch_size = omegaconf_select(cfg, "knn_clb.batch_size", 32)
     cfg.knn_clb.num_workers = omegaconf_select(cfg, "knn_clb.num_workers", 4)
