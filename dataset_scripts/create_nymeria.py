@@ -141,7 +141,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data_root',default='/home/fias/postdoc/datasets/nymeria/', type=str)
 parser.add_argument('--id_files', default=[] , type=str2table)#"Nymeria_v0.0_20230607_s0_james_johnson_act0_e72nhq"
 parser.add_argument('--id_exceptions', default=[] , type=str2table)#"Nymeria_v0.0_20230607_s0_james_johnson_act0_e72nhq"
-parser.add_argument('--fps', default=1 , type=int)
+parser.add_argument('--fps', default=5 , type=int)
 parser.add_argument('--resolution', default=512 , type=int)
 parser.add_argument('--mode', default="a" , type=str)
 args = parser.parse_args()

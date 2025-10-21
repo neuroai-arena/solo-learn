@@ -82,7 +82,6 @@ class Checkpointer(Callback):
         cfg.checkpoint.every_n_iter = omegaconf_select(cfg, "checkpoint.every_n_iter", default=0)
         cfg.checkpoint.save_last = omegaconf_select(cfg, "checkpoint.save_last", default=True)
         cfg.checkpoint.save_first = omegaconf_select(cfg, "checkpoint.save_first", default=False)
-
         return cfg
 
     @staticmethod

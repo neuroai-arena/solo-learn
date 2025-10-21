@@ -18,8 +18,8 @@ from solo.data.foveation import foveation
 
 class Nymeria(Dataset):
     def __init__(self, data_root, transform,gaze_size=224, min_gaze_size=0, time_window=3, aa_time_window=25, center_crop=False, resolution=512,
-                 fps=1,  normalize=False, version=1, distinct_action=False, size_gaze_aware=True, reversed_gaze_size=False, fixations=None,
-                 cam_frame=False, as_euler=False, **kwargs):
+                 fps=1,  normalize=False, version=3, distinct_action=False, size_gaze_aware=True, reversed_gaze_size=False, fixations=None,
+                 cam_frame=False, as_euler=False, mask=[], min_time_window=None, **kwargs):
         super().__init__()
         self.data_root = data_root
         self.transform = transform
@@ -38,6 +38,8 @@ class Nymeria(Dataset):
         self.reversed_gaze_size = reversed_gaze_size
         self.cam_frame = cam_frame
         self.as_euler = as_euler
+        self.mask = np.array(mask, dtype=np.float32)
+        self.min_time_window = -time_window if min_time_window is None else min_time_window
         if fixations:
             self.fixations = np.load(fixations)
             self.fixations = np.concatenate([[self.fixations[0]],self.fixations])
@@ -59,12 +61,16 @@ class Nymeria(Dataset):
         self.size = len(self.dataset)
 
         if self.cam_frame:
-            # self.means = np.array([ 0.869, -0.654,  0.005,  0.014,  0.036,  0.927,  0, 0, 0],dtype=np.float32)
-            # self.stds = np.array([50.698, 40.,  0.099,  0.101,  0.258,  0.23, 0.22,  0.73,  0.68],dtype=np.float32)
             if self.as_euler:
                 self.means = np.zeros((11,), dtype=np.float32)
                 self.stds = np.array([50.698, 40.,  1,1,1 ,1,1,1, -1.5358144e-03,
                                       -6.2901266e-02,  6.9679245e-02],dtype=np.float32)
+            elif self.cam_frame == 4:
+                self.means = np.zeros((9,), dtype=np.float32)
+                self.stds = np.array([50.698, 40.,0.30,  0.14,  0.14, 0.29,0.25,  0.64, 0.54],dtype=np.float32)
+            elif self.cam_frame == 5:
+                self.means = np.zeros((9,), dtype=np.float32)
+                self.stds = np.array([50.698, 40.,0.30,0.14, 0.14, 0.30,0.22,0.57,0.63],dtype=np.float32)
             else:
                 self.means = np.zeros((9,),dtype=np.float32)
                 self.stds = np.array([50.698, 40.,  -6.6378959e-03,  6.5328823e-03,  9.0809369e-01,4.6217211e-02,  -1.5358144e-03,
@@ -104,13 +110,6 @@ class Nymeria(Dataset):
                                                          )
             return img, (adj_gaze_x, adj_gaze_y)
 
-    def quaternion_multiply(self, quaternion1, quaternion0):
-        w0, x0, y0, z0 = quaternion0
-        w1, x1, y1, z1 = quaternion1
-        return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
-                         x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
-                         -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
-                         x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
 
     def get_action(self, row_before, row_after, gaze_before, gaze_after):
         bef_rot = row_before.loc[["quatx", "quaty", "quatz","quatw"]].values
@@ -122,41 +121,28 @@ class Nymeria(Dataset):
         assert np.abs(np.linalg.norm(bef_rot) - 1) < 0.05
         assert np.abs(np.linalg.norm(aft_rot) -1) < 0.05
 
-        # if self.version == 2:
         return self.get_action_v2(bef_rot, aft_rot, bef_trans, aft_trans, gaze_before, gaze_after)
-        #
-        # camera_rot = self.quaternion_multiply((aft_rot[0],-aft_rot[1],-aft_rot[2],-aft_rot[3]), (bef_rot[0],bef_rot[1],bef_rot[1],bef_rot[3])).squeeze()
-        # camera_rot = np.concatenate((camera_rot[1:4], camera_rot[0:1]), axis=0)
-        #
-        # translation = aft_trans- bef_trans
-        # translation_rot = np.transpose(scipy.spatial.transform.Rotation.from_quat(camera_rot).as_matrix())
-        # translation = np.matmul(translation_rot, translation)
-        #
-        # gaze_movement = np.array(gaze_after) - np.array(gaze_before)
-        # gaze_movement /= self.adj_resolution - self.gaze_size
-        #
-        # action = torch.tensor(np.concatenate(
-        #     (gaze_movement.astype(np.float32),
-        #     camera_rot.astype(np.float32),
-        #     translation.astype(np.float32)), axis=0
-        # ))
-        # return action
 
     def compute_relative_pose(self, R1, t1, R2, t2):
         # Compute relative rotation
          # or np.dot(R2, R1.T)
 
         # Compute relative translation
-        if self.cam_frame:
-            # R_rel = R2 @ R1.T
-            # t_rel = R1.T @ (t2 - t1)
-            R_rel = R2.T @ R1
-            t_rel = R1.T @ (t2 - t1)
-        elif self.cam_frame == 2:
-            # R_rel = R2 @ R1.T
-            # t_rel = R1.T @ (t2 - t1)
+        if self.cam_frame == 2:
             R_rel = R2 @ R1.T
             t_rel = R1 @ (t2 - t1)
+        elif self.cam_frame == 3:
+            R_rel = R2.T @ R1
+            t_rel = t2 - R_rel @ t1
+        elif self.cam_frame == 4:
+            R_rel = R2.T @ R1
+            t_rel = R2.T @ (t1 - t2)
+        elif self.cam_frame == 5:
+            R_rel = R1.T @ R2
+            t_rel = R1.T @ (t2 - t1)
+        elif self.cam_frame:
+            R_rel = R2.T @ R1
+            t_rel = R1.T @ (t2 - t1)
         else:
             R_rel = R2 @ R1.T
             t_rel = t2 - R_rel @ t1
@@ -185,6 +171,8 @@ class Nymeria(Dataset):
         ))
 
         action = (action - self.means)/self.stds
+        if len(self.mask) > 0:
+            action = action * self.mask
         return action
 
     def get_gaze_sizes(self, row):
@@ -217,7 +205,7 @@ class Nymeria(Dataset):
 
         keep_searching=True
         while keep_searching:
-            new_idx = idx + random.randint(-self.time_window,self.time_window)
+            new_idx = idx + random.randint(self.min_time_window,self.time_window)
             new_idx = max(0,min(new_idx, self.size-1))
             if try_cpt > 10:
                 new_idx = idx

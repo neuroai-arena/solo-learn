@@ -73,5 +73,7 @@ def vit_large(method, *args, **kwargs):
     custom_backbone_constructor = {"mocov3": mocov3_vit_large, "mae": mae_vit_large, 'dinov2': dinov2_vit_large}
     return get_constructor(method, custom_backbone_constructor, default_vit_large)(*args, **kwargs)
 
+#def vit_base_dinov2(*args, **kwargs):
+#    return dinov2_vit_base(patch_size=14, *args, **kwargs)
 
 __all__ = ["vit_tiny", "vit_small", "vit_base", "vit_large"]

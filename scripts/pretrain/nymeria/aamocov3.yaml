@@ -92,7 +92,7 @@ devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 32
+precision: 16-mixed
 no_validation: True
 limit_val_batches: 0
 num_sanity_val_steps: 0

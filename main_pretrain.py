@@ -22,8 +22,9 @@ import os
 
 import warnings
 
-from solo.data.frankenstein import ConfArrangementCallback
-from solo.data.shapebias import ShapeBiasCallback
+from solo.data.callbacks.frankenstein import ConfArrangementCallback
+from solo.data.callbacks.shapebias import ShapeBiasCallback
+from solo.data.callbacks.things_rsa import ThingsCallback
 
 # Suppress the specific warning
 warnings.filterwarnings(
@@ -45,7 +46,7 @@ from solo.data.StatefulDistributeSampler import DataPrepIterCheck
 from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
-from solo.utils.knn_callback import KNNCallback
+from solo.data.callbacks.knn_callback import KNNCallback
 from solo.utils.misc import make_contiguous, omegaconf_select
 from solo.utils.scheduler import GaussianBlurSigmaDecayCallback
 
@@ -109,6 +110,7 @@ def main(cfg: DictConfig):
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
 
+
     callbacks = []
 
     if cfg.gaussian_blur_decay_clb.enabled:
@@ -167,6 +169,11 @@ def main(cfg: DictConfig):
 
         callbacks.append(ModelSummary(max_depth=1))
 
+
+    if cfg.things_clb.enabled:
+        print("Add callback things")
+        callbacks.append(ThingsCallback(cfg.things_clb))
+
     if cfg.frankenstein_clb.enabled:
         print("Add callback eval configural arrangement")
         callbacks.append(ConfArrangementCallback(cfg.frankenstein_clb))
@@ -174,6 +181,7 @@ def main(cfg: DictConfig):
     if cfg.shapebias_clb.enabled:
         print("Add callback eval shape bias")
         callbacks.append(ShapeBiasCallback(cfg.shapebias_clb))
+
 
     # if cfg.max_epochs == 1:
     #     callbacks.append(ResumeStepCallback())

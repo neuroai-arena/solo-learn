@@ -9,3 +9,6 @@ scipy
 timm
 scikit-learn
 hydra-core
+h5py
+pandas
+fiftyone

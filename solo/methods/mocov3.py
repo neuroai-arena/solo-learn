@@ -76,11 +76,13 @@ class MoCoV3(BaseMomentumMethod):
 
         initialize_momentum_params(self.projector, self.momentum_projector)
 
-    def _build_mlp(self, num_layers, input_dim, mlp_dim, output_dim, last_bn=True):
+    def _build_mlp(self, num_layers, input_dim, mlp_dim, output_dim, last_bn=True, first_bn=False):
         if num_layers == 0:
             return nn.Identity()
 
         mlp = []
+        if first_bn:
+            mlp.append(nn.BatchNorm1d(input_dim))
         for l in range(num_layers):
             dim1 = input_dim if l == 0 else mlp_dim
             dim2 = output_dim if l == num_layers - 1 else mlp_dim

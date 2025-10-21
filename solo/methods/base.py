@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import MultiStepLR
-
+import fiftyone.zoo as foz
 from solo.backbones import (
     convnext_base,
     convnext_large,
@@ -186,14 +186,26 @@ class BaseMethod(pl.LightningModule):
         ##############################
         # Backbone
         self.backbone_args: Dict[str, Any] = cfg.backbone.kwargs
-        assert cfg.backbone.name in BaseMethod._BACKBONES
-        self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
         self.backbone_name: str = cfg.backbone.name
-        # initialize backbone
         kwargs = self.backbone_args.copy()
 
         method: str = cfg.method
-        self.backbone: nn.Module = self.base_model(method, **kwargs)
+
+        if cfg.backbone.pretrained:
+            if "fiftyone" in self.backbone_name:
+                # format fiftyone_NAME
+                pretrained_backbone_name = self.backbone_name.split("_")[1]
+                self.backbone = foz.load_zoo_model(pretrained_backbone_name)._model
+                self.backbone.num_features = self.backbone.num_features
+                for param in self.backbone.parameters():
+                    param.requires_grad = False
+            else:
+                raise Exception("Error with backbone pretained name")
+        else:
+            assert cfg.backbone.name in BaseMethod._BACKBONES
+            self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
+            self.backbone: nn.Module = self.base_model(method, **kwargs)
+
         if self.backbone_name.startswith("resnet"):
             self.features_dim: int = self.backbone.inplanes
             # remove fc layer
@@ -279,6 +291,7 @@ class BaseMethod(pl.LightningModule):
 
         # default for extra backbone kwargs (use pytorch's default if not available)
         cfg.backbone.kwargs = omegaconf_select(cfg, "backbone.kwargs", {})
+        cfg.backbone.pretrained = omegaconf_select(cfg, "backbone.pretrained", default=False)
 
         # default parameters for optimizer
         cfg.optimizer.exclude_bias_n_norm_wd = omegaconf_select(
@@ -323,7 +336,10 @@ class BaseMethod(pl.LightningModule):
                 list of dicts containing learnable parameters and possible settings.
         """
 
-        params = [{"name": "backbone", "params": self.backbone.parameters()}]
+        params = []
+        if not self.cfg.backbone.pretrained:
+            params.append({"name": "backbone", "params": self.backbone.parameters()})
+
         if not self.cfg.no_validation:
             params.append({
                 "name": "classifier",
@@ -434,13 +450,15 @@ class BaseMethod(pl.LightningModule):
 
         if not self.no_channel_last:
             X = X.to(memory_format=torch.channels_last)
-        feats = self.backbone(X)
-        if isinstance(feats, dict):
-            out = feats
-            out["feats"] = torch.flatten(feats[self.cfg.method_kwargs.layer_names[0]], 1)
-            # out["feats"] = feats[self.cfg.method_kwargs.layer_names[0]]
-        else:
-            out = {"feats": feats}
+
+        with torch.set_grad_enabled(not self.cfg.backbone.pretrained):
+            feats = self.backbone(X)
+            if isinstance(feats, dict):
+                out = feats
+                out["feats"] = torch.flatten(feats[self.cfg.method_kwargs.layer_names[0]], 1)
+                # out["feats"] = feats[self.cfg.method_kwargs.layer_names[0]]
+            else:
+                out = {"feats": feats}
 
         if not self.cfg.no_validation:
             logits = self.classifier(out["feats"].detach())
@@ -666,7 +684,17 @@ class BaseMomentumMethod(BaseMethod):
         kwargs = self.backbone_args.copy()
 
         method: str = cfg.method
-        self.momentum_backbone: nn.Module = self.base_model(method, **kwargs)
+        if cfg.backbone.pretrained:
+            if "fiftyone" in self.backbone_name:
+                # format fiftyone_NAME
+                pretrained_backbone_name = self.backbone_name.split("_")[1]
+                self.momentum_backbone = foz.load_zoo_model(pretrained_backbone_name)._model
+                self.momentum_backbone.num_features = self.momentum_backbone.num_features
+            else:
+                raise Exception("Error with backbone pretained name")
+        else:
+            self.momentum_backbone: nn.Module = self.base_model(method, **kwargs)
+
         if self.backbone_name.startswith("resnet"):
             # remove fc layer
             self.momentum_backbone.fc = nn.Identity()
@@ -716,6 +744,8 @@ class BaseMomentumMethod(BaseMethod):
         Returns:
             List[Tuple[Any, Any]]: list of momentum pairs (two element tuples).
         """
+        if self.cfg.backbone.pretrained:
+            return []
 
         return [(self.backbone, self.momentum_backbone)]
 
@@ -762,6 +792,7 @@ class BaseMomentumMethod(BaseMethod):
             out["feats"] = torch.flatten(feats[self.cfg.method_kwargs.layer_names[0]], 1)
         else:
             out = {"feats": feats}
+
         return out
 
     def _shared_step_momentum(self, X: torch.Tensor, targets: torch.Tensor) -> Dict[str, Any]:

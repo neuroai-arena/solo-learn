@@ -1,10 +1,8 @@
 import argparse
-import csv
 import json
 import os
-import time
 from pathlib import Path
-from typing import Tuple, cast
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -16,8 +14,8 @@ from torchvision.transforms import v2 as trv2, InterpolationMode
 
 from tqdm import tqdm
 
-from solo.data.shapebias import TripletDataset, eval_fc
-from solo.methods import METHODS, BaseMethod, LinearModel
+from solo.data.callbacks.shapebias import TripletDataset, eval_fc
+from solo.methods import METHODS
 
 
 @torch.no_grad()

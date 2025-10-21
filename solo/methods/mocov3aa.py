@@ -49,6 +49,8 @@ class AAMoCoV3(MoCoV3):
         cfg.method_kwargs.tt_weight = omegaconf_select(cfg, "method_kwargs.tt_weight", 1)
         cfg.method_kwargs.aa_temperature = omegaconf_select(cfg, "method_kwargs.aa_temperature", 0.2)
         cfg.method_kwargs.equivariant = omegaconf_select(cfg, "method_kwargs.equivariant", False)
+        cfg.method_kwargs.aa_bn = omegaconf_select(cfg, "method_kwargs.aa_bn", False)
+        cfg.method_kwargs.aa_last_bn = omegaconf_select(cfg, "method_kwargs.aa_last_bn", True)
         cfg.method_kwargs.use_crop_params = omegaconf_select(cfg, "method_kwargs.use_crop_params", 0)
         cfg = init_cfg_streams(cfg)
 
@@ -73,20 +75,23 @@ class AAMoCoV3(MoCoV3):
             aa_input_dim += 4
         if self.cfg.method_kwargs.use_crop_params == 3:
             aa_input_dim += 5
-
+        if self.cfg.method_kwargs.use_crop_params == 4:
+            aa_input_dim += 2
 
         self.action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
                                                 aa_input_dim,
                                                 cfg.method_kwargs.aa_hidden_dim,
                                                 cfg.method_kwargs.proj_output_dim,
-                                                last_bn=True
+                                                last_bn=cfg.method_kwargs.aa_last_bn,
+                                                first_bn=cfg.method_kwargs.aa_bn
                                                 )
 
         self.momentum_action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
                                                 aa_input_dim,
                                                 cfg.method_kwargs.aa_hidden_dim,
                                                 cfg.method_kwargs.proj_output_dim,
-                                                last_bn=True
+                                                last_bn=cfg.method_kwargs.aa_last_bn,
+                                                first_bn=cfg.method_kwargs.aa_bn
                                                 )
 
         self.action_predictor = self._build_mlp(cfg.method_kwargs.aa_layers_pred,
@@ -101,14 +106,14 @@ class AAMoCoV3(MoCoV3):
                                                 self.features_dim,
                                                 cfg.method_kwargs.aa_hidden_dim,
                                                 cfg.method_kwargs.proj_output_dim,
-                                                last_bn=True
+                                                last_bn=cfg.method_kwargs.aa_last_bn
                                                 )
 
         self.momentum_vis_pre_action_projector = self._build_mlp(cfg.method_kwargs.pre_aa_layers,
                                                 self.features_dim,
                                                 cfg.method_kwargs.aa_hidden_dim,
                                                 cfg.method_kwargs.proj_output_dim,
-                                                last_bn=True
+                                                last_bn=cfg.method_kwargs.aa_last_bn
                                                 )
 
         aa_input_dim = self.features_dim * 2 if not cfg.method_kwargs.pre_aa_layers else cfg.method_kwargs.proj_output_dim * 2
@@ -119,14 +124,14 @@ class AAMoCoV3(MoCoV3):
                                                 aa_input_dim,
                                                 cfg.method_kwargs.aa_hidden_dim,
                                                 cfg.method_kwargs.proj_output_dim,
-                                                last_bn=True
+                                                last_bn=cfg.method_kwargs.aa_last_bn
                                                 )
 
         self.momentum_vis_action_projector = self._build_mlp(cfg.method_kwargs.aa_layers,
                                                          aa_input_dim,
                                                          cfg.method_kwargs.aa_hidden_dim,
                                                          cfg.method_kwargs.proj_output_dim,
-                                                         last_bn=True
+                                                         last_bn=cfg.method_kwargs.aa_last_bn
                                                          )
 
         self.vis_action_predictor = self._build_mlp(cfg.method_kwargs.aa_layers,
@@ -268,8 +273,10 @@ class AAMoCoV3(MoCoV3):
         # action = X[-1]
         action = X[-1] if self.cfg.data.dataset == "nymeria" else None
         # Add crop params if required
-        if self.cfg.method_kwargs.use_crop_params in [2,3]:
+        if self.cfg.method_kwargs.use_crop_params in [2,3,4]:
             crop_diff = get_crop_diffparams(X[0][1], X[1][1])
+            if self.cfg.method_kwargs.use_crop_params == 4:
+                crop_diff = crop_diff[:,:2]
             action = crop_diff if action is None else torch.cat((action, crop_diff), dim=1)
 
         action_proj = self.action_projector(action)
@@ -304,7 +311,7 @@ class AAMoCoV3(MoCoV3):
             "train_aa_constrastive_loss": aa_contrastive_loss
         }
         for i in range(action.shape[1]):
-            metrics[f"a{i}"] = action[0,i]
+            metrics[f"a{i}"] = torch.abs(action[0,i])
 
 
         # if batch_idx == 0:

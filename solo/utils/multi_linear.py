@@ -56,6 +56,7 @@ class LinearClassifier(nn.Module):
             self,
             out_dim: int,
             num_classes: int,
+            depth: int
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -75,6 +76,7 @@ class DepthLinearClassifier(nn.Module):
             self,
             out_dim: int,
             num_classes,
+            depth: int
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -85,19 +87,42 @@ class DepthLinearClassifier(nn.Module):
         #     def forward(self, x):
         #         return torch.nn.functional.interpolate(x, size=(img_size, img_size), mode='bilinear',
         #                                                align_corners=False)
-        self.head = nn.Sequential(
-            # nn.Conv2d(out_dim, 1, 1),
-            nn.Conv2d(out_dim, 128, 3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            # nn.Conv2d(128, 64, 3, padding=1),
-            nn.Conv2d(128, num_classes[0], 1),
-            nn.Softplus() if num_classes[0] == 1 else nn.Identity()
-            # nn.ReLU(inplace=True),
-            # nn.Conv2d(64, 1, kernel_size=1),  # Single-channel depth output
-            # Interpolate()
-        )
-
+        if depth == 1:
+            self.head = nn.Sequential(
+                nn.Conv2d(out_dim, 128, 3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, num_classes[0], 1),
+                nn.Softplus() if num_classes[0] == 1 else nn.Identity()
+            )
+        elif depth == 3:
+            self.head = nn.Sequential(
+                nn.Conv2d(out_dim, 256, 3, padding=1),
+                nn.BatchNorm2d(256),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(256, 128, 3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, 64, 3, padding=1),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, num_classes[0], 1),
+                nn.Softplus() if num_classes[0] == 1 else nn.Identity()
+            )
+        elif depth == 30:
+            self.head = nn.Sequential(
+                nn.ConvTranspose2d(out_dim, 256, 3, stride=2),
+                nn.BatchNorm2d(256),
+                nn.ReLU(inplace=True),
+                nn.ConvTranspose2d(256, 128, 3, stride=2),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.ConvTranspose2d(128, 64, 3, stride=2),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, num_classes[0], 1),
+                nn.Softplus() if num_classes[0] == 1 else nn.Identity()
+            )
     def forward(self, x):
         if x.shape[1] != self.out_dim:
             raise ValueError(
@@ -111,17 +136,18 @@ class ViTLinearClassifier(nn.Module):
             self,
             out_dim: int,
             num_classes: int,
+            depth: int,
             **output_kwargs,
     ):
         super().__init__()
         self.output_kwargs = output_kwargs
         if isinstance(num_classes, tuple) or isinstance(num_classes, omegaconf.listconfig.ListConfig):
-            self.head = DepthLinearClassifier(out_dim, num_classes)
+            self.head = DepthLinearClassifier(out_dim, num_classes, depth)
             self.output_kwargs["use_map"] = True
             self.output_kwargs["use_avgpool"] = False
             self.output_kwargs["use_cls_token"] = False
         else:
-            self.head = LinearClassifier(out_dim, num_classes)
+            self.head = LinearClassifier(out_dim, num_classes, depth)
 
 
     def forward(self, x):
@@ -138,15 +164,16 @@ class CNNLinearClassifier(nn.Module):
             self,
             out_dim: int,
             num_classes,
+            depth: int,
             **output_kwargs,
     ):
         super().__init__()
         self.output_kwargs = output_kwargs
         if  isinstance(num_classes, omegaconf.listconfig.ListConfig):
-            self.head = DepthLinearClassifier(out_dim, num_classes)
+            self.head = DepthLinearClassifier(out_dim, num_classes, depth)
             self.pool = "none"
         else:
-            self.head = LinearClassifier(out_dim, num_classes)
+            self.head = LinearClassifier(out_dim, num_classes, depth)
             self.pool = "avg"
 
     def forward(self, x):
@@ -229,6 +256,7 @@ def setup_linear_classifiers_only_lr(
         batch_size: int,
         devices: int,
         num_classes: int,
+        depth: int
 ) -> Union[AllClassifiers, List[Dict[str, Any]]]:
     linear_classifiers_dict = nn.ModuleDict()
     optim_param_groups = []
@@ -236,7 +264,7 @@ def setup_linear_classifiers_only_lr(
         lr = scale_lr(_lr, batch_size, devices)
         out_dim = sample_output.shape[-1]
 
-        linear_classifier = LinearClassifier(out_dim, num_classes=num_classes)
+        linear_classifier = LinearClassifier(out_dim, num_classes=num_classes, depth=depth)
         clf_str = f"classifier-lr_{lr:.8f}".replace(".", ":")
         linear_classifiers_dict[clf_str] = linear_classifier
 
@@ -253,6 +281,7 @@ def setup_linear_classifiers_multi_layer(
         batch_size: int,
         devices: int,
         num_classes: int,
+        depth: int
 ) -> Union[AllClassifiers, List[Dict[str, Any]]]:
     linear_classifiers_dict = nn.ModuleDict()
     optim_param_groups = []
@@ -262,7 +291,7 @@ def setup_linear_classifiers_multi_layer(
         for layer_name in layer_names:
             out_dim = sample_output[layer_name].shape[1]
 
-            linear_classifier = CNNLinearClassifier(out_dim, num_classes=num_classes, layer_name=layer_name)
+            linear_classifier = CNNLinearClassifier(out_dim, num_classes=num_classes, layer_name=layer_name, depth=depth)
             clf_str = f"classifier-layer={layer_name}-lr_{lr:.8f}".replace(".", ":")
             print(f"Adding {clf_str}")
             linear_classifiers_dict[clf_str] = linear_classifier
@@ -280,6 +309,7 @@ def setup_linear_classifiers_transformer(
         param_dict: Dict[str, List[Any]],
         sample_output: torch.Tensor,
         has_class_token: bool,
+        depth: int
 
 ) -> Union[AllClassifiers, List[Dict[str, Any]]]:
     print("Setting up linear classifiers:")
@@ -307,7 +337,7 @@ def setup_linear_classifiers_transformer(
             continue
 
         out_dim = out_dim.shape[1]
-        linear_classifier = ViTLinearClassifier(out_dim, num_classes=num_classes, has_class_token=has_class_token,
+        linear_classifier = ViTLinearClassifier(out_dim, num_classes=num_classes, has_class_token=has_class_token, depth=depth,
                                                 **param)
 
         clf_str = "classifier-" + "-".join([f'{key}={value}' for key, value in param.items()]) + f"-lr={lr:.8f}"
@@ -334,6 +364,7 @@ def setup_linear_classifiers(
         use_avgpool: List[bool] = None,
         use_cls_token: List[bool] = None,
         use_n_blocks: List[int] = None,
+        depth = 1,
 ) -> Union[AllClassifiers, List[Dict[str, Any]]]:
     special_search = any([x is not None for x in [use_avgpool, use_cls_token, use_n_blocks, layer_names]])
 
@@ -343,6 +374,7 @@ def setup_linear_classifiers(
             has_class_token=has_class_token,
             batch_size=batch_size,
             devices=devices, num_classes=num_classes,
+            depth=depth,
             param_dict=dict(use_avgpool=use_avgpool, use_cls_token=use_cls_token, use_n_blocks=use_n_blocks,
                             lr=learning_rates),
         )
@@ -352,11 +384,11 @@ def setup_linear_classifiers(
             learning_rates=learning_rates,
             layer_names=layer_names,
             batch_size=batch_size,
-            devices=devices, num_classes=num_classes,
+            devices=devices, num_classes=num_classes, depth=depth
         )
     else:
         return setup_linear_classifiers_only_lr(
-            sample_output, learning_rates, batch_size, devices, num_classes
+            sample_output, learning_rates, batch_size, devices, num_classes, depth=depth
         )
 
 

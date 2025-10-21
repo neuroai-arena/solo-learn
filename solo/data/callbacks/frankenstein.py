@@ -78,7 +78,9 @@ class FrankensteinDataset(Dataset):
 @torch.no_grad()
 def get_features(dataloader, model, device, linear=nn.Identity()):
     def feature(f):
-        k = list(f.keys())[0]
+        # k = list(f.keys())[0]
+        k = "avgpool"
+        print("dict", list(f.keys()))
         return torch.flatten(f[k], 1)
     features, labels, img_ids = [], [], []
     for r in dataloader:
@@ -115,7 +117,7 @@ class ConfArrangementCallback(Callback):
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         mean, std, image_size = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 224
-        preprocess = trv2.Compose([trv2.Resize((image_size, image_size), interpolation=InterpolationMode.BICUBIC), trv2.ToImage(),
+        preprocess = trv2.Compose([trv2.Resize((image_size, image_size), interpolation=InterpolationMode.BICUBIC),   trv2.CenterCrop(image_size), trv2.ToImage(),
                              trv2.ToDtype(torch.float32, scale=True), trv2.Normalize(mean=mean, std=std)])
 
         dataset_train = FrankensteinDataset(self.cfg.path, subset_name="features", transform=preprocess)
@@ -136,16 +138,22 @@ class ConfArrangementCallback(Callback):
 
 
     def run(self, trainer, pl_module):
+        pl_module.eval()
         features, labels, img_ids = get_features(self.dataloader_features, pl_module.backbone, pl_module.device)
         features_test, labels_test, img_ids_test = get_features(self.dataloader_frankenstein, pl_module.backbone,
                                                                 pl_module.device)
 
         raw_acc = self.eval_fc(features, features, labels, labels, img_ids, img_ids)
+        raw_acc2 = self.eval_fc2(features, features, labels, labels, img_ids, img_ids)
+
         frank_acc = self.eval_fc(features, features_test, labels, labels_test, img_ids, img_ids_test)
         gap_acc = frank_acc - raw_acc
-        pl_module.log_dict({"silhouette_acc": raw_acc, "frankenstein_acc": frank_acc, "conf_acc": gap_acc},
+        pl_module.log_dict({"silhouette_acc": raw_acc, "silhouettes_acc_2ways": raw_acc2 , "frankenstein_acc": frank_acc, "conf_acc": gap_acc},
                            sync_dist=True, on_epoch=True)
 
+        pl_module.train()
+
+    @torch.no_grad()
     def eval_fc(self, features, features_test, labels, labels_test, img_ids, img_ids_test):
         success = 0
         all = 0
@@ -185,7 +193,38 @@ class ConfArrangementCallback(Callback):
 
         return success / all
 
+    @torch.no_grad()
+    def eval_fc2(self, features, features_test, labels, labels_test, img_ids, img_ids_test):
+        success = 0
+        fails = 0
+        lunique = labels.unique()
 
+        for l in lunique:
+            mask_label_t = (labels_test == l)
+            mask_label = (labels == l)
+
+            mask_no_label = ~mask_label
+
+            ids_label = img_ids[mask_label]
+            for id in ids_label:
+                mask_no_id_t = mask_label_t & (img_ids_test != id)
+                mask_id = mask_label & (img_ids == id)
+
+                positives = features_test[mask_no_id_t]
+                negatives = features[mask_no_label]
+
+                p = positives[torch.arange(0, len(positives), device=features.device).repeat(len(negatives)).view(-1)]
+                n = negatives[torch.arange(0, len(negatives), device=features.device).view(-1, 1).repeat(
+                    (1, len(positives))).view(-1)]
+                main_f = features[mask_id].repeat((len(positives) * len(negatives), 1))
+
+                correct = torch.nn.functional.cosine_similarity(main_f, p, dim=1)
+                wrong2 = torch.nn.functional.cosine_similarity(n, p, dim=1)
+
+                all_success = (correct > wrong2).float().sum()
+                success += all_success
+                fails += len(positives) * len(negatives) - all_success
+        return success / (fails + success)
 
 
 

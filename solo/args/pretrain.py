@@ -189,6 +189,33 @@ def add_and_assert_lightning_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictCon
 
     return cfg
 
+def add_and_assert_eval_callbacks_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
+    """Adds specific default values/checks for Pytorch Lightning config.
+
+    Args:
+        cfg (omegaconf.DictConfig): DictConfig object.
+
+    Returns:
+        omegaconf.DictConfig: same as the argument, used to avoid errors.
+    """
+
+    cfg.frankenstein_clb = omegaconf_select(cfg, "frankenstein_clb", {})
+    cfg.frankenstein_clb.enabled = omegaconf_select(cfg, "frankenstein_clb.enabled", False)
+    cfg.frankenstein_clb.freq_epochs = omegaconf_select(cfg, "frankenstein_clb.freq_epochs", 5)
+    cfg.frankenstein_clb.path = omegaconf_select(cfg, "frankenstein_clb.path", "/home/aubret/frankenstein/")
+
+    cfg.shapebias_clb = omegaconf_select(cfg, "shapebias_clb", {})
+    cfg.shapebias_clb.enabled = omegaconf_select(cfg, "shapebias_clb.enabled", False)
+    cfg.shapebias_clb.freq_epochs = omegaconf_select(cfg, "shapebias_clb.freq_epochs", 5)
+    cfg.shapebias_clb.path = omegaconf_select(cfg, "shapebias_clb.path", "/home/aubret/shapebias/")
+
+    cfg.things_clb = omegaconf_select(cfg, "things_clb", {})
+    cfg.things_clb.enabled = omegaconf_select(cfg, "things_clb.enabled", False)
+    cfg.things_clb.path = omegaconf_select(cfg, "things_clb.path", "/home/autolearn/aubret/things/")
+    cfg.things_clb.layers = omegaconf_select(cfg, "things_clb.layers", [2,5])
+    cfg.things_clb.perform_every_n_batches = omegaconf_select(cfg, "things_clb.perform_every_n_batches", 0.05)
+
+    return cfg
 
 def parse_cfg(cfg: omegaconf.DictConfig):
     # default values for checkpointer
@@ -220,6 +247,8 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     # default values for pytorch lightning stuff
     cfg = add_and_assert_lightning_cfg(cfg)
 
+    # default values for evaluation callbacks
+    cfg = add_and_assert_eval_callbacks_cfg(cfg)
     # extra processing
     if cfg.data.dataset in _N_CLASSES_PER_DATASET:
         cfg.data.num_classes = _N_CLASSES_PER_DATASET[cfg.data.dataset]
@@ -276,13 +305,5 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     cfg.no_validation = omegaconf_select(cfg, "no_validation", False)
 
-    cfg.frankenstein_clb = omegaconf_select(cfg, "frankenstein_clb", {})
-    cfg.frankenstein_clb.enabled = omegaconf_select(cfg, "frankenstein_clb.enabled", False)
-    cfg.frankenstein_clb.freq_epochs = omegaconf_select(cfg, "frankenstein_clb.freq_epochs", 5)
-    cfg.frankenstein_clb.path = omegaconf_select(cfg, "frankenstein_clb.path", "/home/aubret/frankenstein/")
 
-    cfg.shapebias_clb = omegaconf_select(cfg, "shapebias_clb", {})
-    cfg.shapebias_clb.enabled = omegaconf_select(cfg, "shapebias_clb.enabled", False)
-    cfg.shapebias_clb.freq_epochs = omegaconf_select(cfg, "shapebias_clb.freq_epochs", 5)
-    cfg.shapebias_clb.path = omegaconf_select(cfg, "shapebias_clb.path", "/home/aubret/shapebias/")
     return cfg

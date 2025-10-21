@@ -165,6 +165,7 @@ class LinearModel(pl.LightningModule):
                 use_cls_token=self.cfg.grid.use_cls_token,
                 use_n_blocks=self.cfg.grid.use_n_blocks,
                 layer_names=self.cfg.grid.layer_names,
+                depth=self.cfg.grid.depth
             )
         else:
             self.classifier = nn.Linear(self.features_dim, cfg.data.num_classes)
@@ -264,6 +265,7 @@ class LinearModel(pl.LightningModule):
         cfg.scheduler.warmup_start_lr = omegaconf_select(cfg, "scheduler.warmup_start_lr", 3e-5)
         cfg.scheduler.warmup_epochs = omegaconf_select(cfg, "scheduler.warmup_epochs", 10)
         cfg.scheduler.interval = omegaconf_select(cfg, "scheduler.interval", "step")
+        cfg.optimizer.evalmode = omegaconf_select(cfg, "optimizer.evalmode", True)
 
         # default parameters for performance optimization
         cfg.performance = omegaconf_select(cfg, "performance", {})
@@ -279,6 +281,7 @@ class LinearModel(pl.LightningModule):
         cfg.grid.use_cls_token = omegaconf_select(cfg, "grid.use_cls_token", None)
         cfg.grid.use_n_blocks = omegaconf_select(cfg, "grid.use_n_blocks", [1])
         cfg.grid.layer_names = omegaconf_select(cfg, "grid.layer_names", None)
+        cfg.grid.depth = omegaconf_select(cfg, "grid.depth", 1)
 
         return cfg
 
@@ -435,8 +438,7 @@ class LinearModel(pl.LightningModule):
         if not self.no_channel_last and not self.use_pre_extract_feats:
             X = X.to(memory_format=torch.channels_last)
 
-        if not self.use_pre_extract_feats or (
-                self.trainer.sanity_checking and not self.cfg.skip_pre_extraction_of_feats):
+        if not self.use_pre_extract_feats or (self.trainer.sanity_checking and not self.cfg.skip_pre_extraction_of_feats):
             with torch.set_grad_enabled(self.finetune):
                 feats = self.forward_backbone(X)
         else:
@@ -538,7 +540,7 @@ class LinearModel(pl.LightningModule):
         """
 
         # set backbone to eval mode
-        if not self.finetune:
+        if not self.finetune and self.cfg.optimizer.evalmode:
             self.backbone.eval()
 
         out = self.shared_step(batch, batch_idx, mode="train")
