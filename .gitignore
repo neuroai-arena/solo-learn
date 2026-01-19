@@ -5,6 +5,7 @@ runs/
 wandb/
 wandb*/
 !scripts/**
+docs/
 
 # umap dir
 auto_umap/
